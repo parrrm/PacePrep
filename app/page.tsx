@@ -741,14 +741,17 @@ function Dashboard({
                     {TOPICS[r.t].short}
                     <b>{r.tries.length ? `${r.score}%` : 'UNRANKED'}</b>
                   </span>
-                  <div className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'}>
-                    <i style={{ width: `${r.score}%` }} />
+                  <div
+                    className={`topic-ring ${r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'}`}
+                    style={{ '--ring-progress': `${r.score * 3.6}deg` } as React.CSSProperties}
+                  >
+                    <i />
                   </div>
                 </div>
               ))}
             </div>
           </section>
-          <section className="panel">
+          <section className="panel session-panel">
             <Heading over="PRACTICE MODES" title="Choose your session" />
             <div className="modes">
               {MODES.map(([id, title, copy, I]) => (
