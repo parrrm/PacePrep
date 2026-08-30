@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock3,
   Flame,
+  FlagTriangleRight,
   Grid3X3,
   Keyboard,
   Moon,
@@ -378,7 +379,7 @@ export default function Home() {
     } | null>(null),
     [input, setInput] = useState<'mcq' | 'typed'>('mcq'),
     [topic, setTopic] = useState<Topic>('fractions'),
-    [group, setGroup] = useState('Denominator 16'),
+    [group, setGroup] = useState('Denominator 2'),
     [left, setLeft] = useState(60);
   const started = useRef(performance.now()),
     field = useRef<HTMLInputElement>(null);
@@ -679,7 +680,6 @@ function Dashboard({
         tries: history.filter((x) => day(x.at) === day(d.getTime())),
       };
     }),
-    max = Math.max(1, ...days.map((x) => x.tries.length)),
     streak = new Set(history.map((x) => day(x.at))).size;
   return (
     <div className="page">
@@ -710,9 +710,9 @@ function Dashboard({
         />
         <Metric
           I={Clock3}
-          title="Avg. response"
-          value={today.length ? `${(average(today) / 1000).toFixed(1)}s` : '—'}
-          note="Per answered fact"
+          title="Avg. time per question"
+          value={`${today.length ? (average(today) / 1000).toFixed(2) : '0.00'}s`}
+          note="Your lap pace"
           tone="blue"
         />
         <Metric
@@ -720,7 +720,7 @@ function Dashboard({
           title="Practice streak"
           value={`${streak} days`}
           note="Consistency compounds"
-          tone="orange"
+          tone={streak ? 'fire active' : 'fire empty'}
         />
       </section>
       <div className="columns">
@@ -728,8 +728,8 @@ function Dashboard({
           <section className="panel progress">
             <Heading
               over="OVERALL MASTERY"
-              title={`${Math.round((mastered / FACTS.length) * 100)}% of recall bank`}
-              extra={`${mastered} / ${FACTS.length} mastered`}
+              title={mastered ? `${Math.round((mastered / FACTS.length) * 100)}% of recall bank` : 'Unranked · Level 1'}
+              extra={mastered ? `${mastered} / ${FACTS.length} mastered` : 'Complete your first run to earn XP'}
             />
             <div className="bigbar">
               <i style={{ width: `${(mastered / FACTS.length) * 100}%` }} />
@@ -739,9 +739,9 @@ function Dashboard({
                 <div key={r.t}>
                   <span>
                     {TOPICS[r.t].short}
-                    <b>{r.score}%</b>
+                    <b>{r.tries.length ? `${r.score}%` : 'UNRANKED'}</b>
                   </span>
-                  <div>
+                  <div className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'}>
                     <i style={{ width: `${r.score}%` }} />
                   </div>
                 </div>
@@ -764,7 +764,7 @@ function Dashboard({
                     <b>{title}</b>
                     <small>{copy}</small>
                   </span>
-                  <ChevronRight />
+                  <Play className="start-icon" fill="currentColor" />
                 </button>
               ))}
             </div>
@@ -799,11 +799,9 @@ function Dashboard({
             <div className="chart">
               {days.map((d) => (
                 <div key={d.label}>
-                  <i
-                    style={{
-                      height: `${Math.max(4, (d.tries.length / max) * 100)}%`,
-                    }}
-                  />
+                  <i className={d.tries.length >= 10 && accuracy(d.tries) >= 90 ? 'hit' : d.tries.length ? 'active' : ''}>
+                    {d.tries.length ? d.tries.length : '·'}
+                  </i>
                   <small>{d.label}</small>
                 </div>
               ))}
@@ -822,23 +820,28 @@ function Dashboard({
           </section>
           <section className="panel weak">
             <Heading over="SMART REVIEW" title="Needs attention" />
-            {rows.slice(0, 3).map((r, i) => (
+            {!history.length ? <div className="diagnostic-empty">
+              <span className="starting-line" aria-hidden="true"><FlagTriangleRight /><i /><i /><i /></span>
+              <b>Your first benchmark awaits</b>
+              <small>Run a 60-second set to reveal your target areas.</small>
+              <Button onClick={() => start('sprint')}><Zap /> Take a 1-minute diagnostic test</Button>
+            </div> : rows.slice(0, 3).map((r) => (
               <div key={r.t}>
-                <i className={i === 0 ? 'red' : i === 1 ? 'yellow' : 'blue'} />
+                <i className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'} />
                 <span>
                   <b>{TOPICS[r.t].short}</b>
                   <small>
                     {r.tries.length
                       ? `${accuracy(r.tries)}% · ${(average(r.tries) / 1000).toFixed(1)}s avg`
-                      : 'Not practised yet'}
+                      : 'Level 1 · Ready to rank'}
                   </small>
                 </span>
-                <em>{r.score}%</em>
+                <em>{r.tries.length ? `${r.score}%` : 'LVL 1'}</em>
               </div>
             ))}
-            <Button variant="outline" onClick={() => start('weak')}>
+            {!!history.length && <Button variant="outline" onClick={() => start('weak')}>
               Practice weak areas <ChevronRight />
-            </Button>
+            </Button>}
           </section>
           <div className="tip">
             <Brain />
