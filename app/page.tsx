@@ -170,20 +170,25 @@ const FR: [number, number][] = [
   [8, 25],
   [9, 25],
 ];
-const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 const percent = (n: number, d: number) => {
-  let reducedDenominator = d / gcd(n, d);
-  while (reducedDenominator % 2 === 0) reducedDenominator /= 2;
-  while (reducedDenominator % 5 === 0) reducedDenominator /= 5;
-  const raw = (n / d) * 100;
-  const value =
-    reducedDenominator === 1
-      ? Number(raw.toFixed(8)).toString()
-      : (Math.trunc((raw + Number.EPSILON) * 100) / 100)
-          .toFixed(2)
-          .replace(/\.00$/, '')
-          .replace(/(\.\d)0$/, '$1');
-  return `${value}%`;
+  const scaledNumerator = n * 100;
+  const whole = Math.floor(scaledNumerator / d);
+  let remainder = scaledNumerator % d;
+  if (!remainder) return `${whole}%`;
+
+  // Banking-exam recall banks use the exact terminating value, and the first
+  // two decimal digits (without rounding) for recurring values such as 1/6.
+  let denominator = d;
+  while (denominator % 2 === 0) denominator /= 2;
+  while (denominator % 5 === 0) denominator /= 5;
+  const decimalLimit = denominator === 1 ? 12 : 2;
+  let decimals = '';
+  while (remainder && decimals.length < decimalLimit) {
+    remainder *= 10;
+    decimals += Math.floor(remainder / d);
+    remainder %= d;
+  }
+  return `${whole}.${decimals}%`;
 };
 function bank() {
   const f: Fact[] = [];
@@ -379,6 +384,7 @@ export default function Home() {
     [dark, setDark] = useState(false),
     [stats, setStats] = useState<Record<string, Stat>>({}),
     [history, setHistory] = useState<Try[]>([]),
+    [completedSessions, setCompletedSessions] = useState(0),
     [ready, setReady] = useState(false),
     [mode, setMode] = useState<Mode>('mixed'),
     [session, setSession] = useState<Try[]>([]),
@@ -395,12 +401,14 @@ export default function Home() {
     [group, setGroup] = useState('Denominator 2'),
     [left, setLeft] = useState(60);
   const started = useRef(performance.now()),
+    sessionCounted = useRef(false),
     field = useRef<HTMLInputElement>(null);
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem('recall-lab') || '{}');
       setStats(s.stats || {});
       setHistory(s.history || []);
+      setCompletedSessions(s.completedSessions || 0);
       setDark(!!s.dark);
     } catch {}
     setReady(true);
@@ -410,9 +418,14 @@ export default function Home() {
     if (ready)
       localStorage.setItem(
         'recall-lab',
-        JSON.stringify({ stats, history: history.slice(-1500), dark }),
+        JSON.stringify({
+          stats,
+          history: history.slice(-1500),
+          completedSessions,
+          dark,
+        }),
       );
-  }, [stats, history, dark, ready]);
+  }, [stats, history, completedSessions, dark, ready]);
   const pool = useMemo(() => {
     if (mode === 'learn') return FACTS.filter((f) => !f.reverse);
     if (mode === 'focus')
@@ -442,6 +455,7 @@ export default function Home() {
     setTimeout(() => field.current?.focus(), 20);
   }
   function start(m: Mode) {
+    sessionCounted.current = false;
     setMode(m);
     setSession([]);
     setLeft(60);
@@ -459,6 +473,13 @@ export default function Home() {
       setResult(null);
       started.current = performance.now();
     }, 0);
+  }
+  function finishSession() {
+    if (!sessionCounted.current) {
+      sessionCounted.current = true;
+      setCompletedSessions((count) => count + 1);
+    }
+    setView('summary');
   }
   const limit =
     mode === 'test10'
@@ -506,7 +527,7 @@ export default function Home() {
     setTimeout(
       () =>
         limit && session.length + 1 >= limit
-          ? setView('summary')
+          ? finishSession()
           : next(fact.id),
       ok ? 650 : 1150,
     );
@@ -518,7 +539,7 @@ export default function Home() {
         setLeft((x) => {
           if (x <= 1) {
             clearInterval(id);
-            setTimeout(() => setView('summary'), 0);
+            setTimeout(finishSession, 0);
             return 0;
           }
           return x - 1;
@@ -536,7 +557,7 @@ export default function Home() {
         ['1', '2', '3', '4'].includes(e.key)
       )
         submit(opts[+e.key - 1]);
-      if (view === 'practice' && e.key === 'Escape') setView('summary');
+      if (view === 'practice' && e.key === 'Escape') finishSession();
     };
     addEventListener('keydown', h);
     return () => removeEventListener('keydown', h);
@@ -572,6 +593,7 @@ export default function Home() {
         setDark={setDark}
         view={view}
         setView={setView}
+        onMixed={() => start('mixed')}
         attempts={history.length}
         mastered={mastered}
       />
@@ -579,6 +601,7 @@ export default function Home() {
         <HomeDashboard
           today={today}
           history={history}
+          completedSessions={completedSessions}
           rows={topicRows}
           start={start}
         />
@@ -605,7 +628,7 @@ export default function Home() {
           current={session.length + 1}
           limit={limit}
           left={mode === 'sprint' ? left : null}
-          end={() => setView('summary')}
+          end={finishSession}
           field={field}
         />
       )}{' '}
@@ -628,6 +651,7 @@ function Header({
   setDark,
   view,
   setView,
+  onMixed,
   attempts,
   mastered,
 }: {
@@ -635,6 +659,7 @@ function Header({
   setDark: (x: boolean) => void;
   view: string;
   setView: (v: 'dashboard' | 'practiceHub' | 'mastery') => void;
+  onMixed: () => void;
   attempts: number;
   mastered: number;
 }) {
@@ -648,33 +673,43 @@ function Header({
         </b>
         Recall<span>Lab</span>
       </button>
-      <nav>
+      <nav aria-label="Primary navigation">
         <button
           className={view === 'dashboard' ? 'active' : ''}
+          aria-current={view === 'dashboard' ? 'page' : undefined}
           onClick={() => setView('dashboard')}
         >
           Home
         </button>
         <button
           className={view === 'practiceHub' ? 'active' : ''}
+          aria-current={view === 'practiceHub' ? 'page' : undefined}
           onClick={() => setView('practiceHub')}
         >
           Practice
         </button>
         <button
           className={view === 'mastery' ? 'active' : ''}
+          aria-current={view === 'mastery' ? 'page' : undefined}
           onClick={() => setView('mastery')}
         >
           Progress
         </button>
       </nav>
       <div>
+        <Button variant="outline" className="nav-mixed" onClick={onMixed}>
+          <Play fill="currentColor" /> Mixed practice
+        </Button>
         <div className="nav-xp" aria-label={`Level ${Math.floor(attempts / 50) + 1}, ${attempts % 50} of 50 XP`}>
           <span><b>LVL {Math.floor(attempts / 50) + 1}</b><small>{mastered} mastered</small></span>
           <i><b style={{ width: `${(attempts % 50) * 2}%` }} /></i>
         </div>
         <em>SBI PO · IBPS PO</em>
-        <button className="icon" onClick={() => setDark(!dark)}>
+        <button
+          className="icon"
+          aria-label={dark ? 'Use light mode' : 'Use dark mode'}
+          onClick={() => setDark(!dark)}
+        >
           {dark ? <Sun /> : <Moon />}
         </button>
       </div>
@@ -684,11 +719,13 @@ function Header({
 function HomeDashboard({
   today,
   history,
+  completedSessions,
   rows,
   start,
 }: {
   today: Try[];
   history: Try[];
+  completedSessions: number;
   rows: { t: Topic; score: number; tries: Try[] }[];
   start: (m: Mode) => void;
 }) {
@@ -698,7 +735,7 @@ function HomeDashboard({
       return history.filter((x) => day(x.at) === day(d.getTime()));
     }),
     streak = new Set(history.map((x) => day(x.at))).size,
-    experienced = history.length >= 30,
+    experienced = completedSessions >= 3,
     earlier = history.slice(0, Math.max(0, history.length - 10)),
     recent = history.slice(-10),
     accuracyNote = experienced
@@ -706,7 +743,11 @@ function HomeDashboard({
       : 'Complete 3 sessions to unlock trends',
     paceNote = experienced
       ? `${Math.abs((average(recent) - average(earlier.slice(-10))) / 1000).toFixed(1)}s ${average(recent) <= average(earlier.slice(-10)) ? 'faster' : 'to recover'}`
-      : 'Baseline builds with every answer';
+      : 'Baseline builds with every answer',
+    interventionRows = rows
+      .filter((row) => row.tries.length > 0 && (accuracy(row.tries) < 85 || average(row.tries) > 8000))
+      .slice(0, 3),
+    recommendedTopic = interventionRows[0]?.t ?? rows.find((row) => row.tries.length)?.t ?? rows[0].t;
   return (
     <div className="page home-dashboard">
       <section className="home-hero" aria-label="Today's recommended workout">
@@ -716,11 +757,10 @@ function HomeDashboard({
             <small>DAILY PRACTICE</small>
             <h1>{history.length ? "Today's adaptive workout" : 'Establish your baseline'}</h1>
             <p>{history.length ? '12 weak facts · 8 scheduled reviews · 5 mixed calculations' : 'A focused one-minute diagnostic will reveal your fastest and weakest fact families.'}</p>
-            <em>{history.length ? `Recommended because ${TOPICS[rows[0].t].short} currently needs the most attention.` : 'This first result becomes the benchmark for measuring every future gain.'}</em>
+            <em>{history.length ? `Recommended because ${TOPICS[recommendedTopic].short} currently needs the most attention.` : 'This first result becomes the benchmark for measuring every future gain.'}</em>
           </div>
         </div>
         <div className="hero-actions">
-          <Button variant="outline" onClick={() => start('mixed')}>Mixed practice</Button>
           <Button onClick={() => start(history.length ? 'mixed' : 'sprint')}><Play fill="currentColor" /> {history.length ? 'Begin workout' : 'Start diagnostic'}</Button>
         </div>
       </section>
@@ -740,8 +780,10 @@ function HomeDashboard({
         <Heading over="TARGETED INTERVENTION" title="Needs attention" />
         {!history.length ? (
           <div className="intervention-empty"><FlagTriangleRight /><span><b>Your first benchmark awaits</b><small>Complete the diagnostic to reveal the exact facts that need attention.</small></span></div>
+        ) : !interventionRows.length ? (
+          <div className="intervention-empty"><Check /><span><b>No topic is below the intervention threshold</b><small>Every practiced topic is at least 85% accurate and averages 8.0 seconds or faster.</small></span></div>
         ) : (
-          <div className="intervention-list">{rows.slice(0, 3).map((r) => <div key={r.t}><i className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'} /><span><b>{TOPICS[r.t].short}</b><small>{r.tries.length ? `${accuracy(r.tries)}% accurate · ${(average(r.tries) / 1000).toFixed(1)}s average` : 'Level 1 · Ready to rank'}</small></span><em>{r.tries.length ? `${r.score}%` : 'UNRANKED'}</em></div>)}</div>
+          <div className="intervention-list">{interventionRows.map((r) => <div key={r.t}><i className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'} /><span><b>{TOPICS[r.t].short}</b><small>{`${accuracy(r.tries)}% accurate · ${(average(r.tries) / 1000).toFixed(1)}s average`}</small></span></div>)}</div>
         )}
         <Button onClick={() => start(history.length ? 'weak' : 'sprint')}><Target /> {history.length ? 'Drill Weaknesses' : 'Start diagnostic'}</Button>
       </section>
