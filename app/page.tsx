@@ -170,8 +170,21 @@ const FR: [number, number][] = [
   [8, 25],
   [9, 25],
 ];
-const percent = (n: number, d: number) =>
-  `${Number(((n / d) * 100).toFixed([3, 6, 7, 9, 11, 13].includes(d) ? 2 : 4))}%`;
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+const percent = (n: number, d: number) => {
+  let reducedDenominator = d / gcd(n, d);
+  while (reducedDenominator % 2 === 0) reducedDenominator /= 2;
+  while (reducedDenominator % 5 === 0) reducedDenominator /= 5;
+  const raw = (n / d) * 100;
+  const value =
+    reducedDenominator === 1
+      ? Number(raw.toFixed(8)).toString()
+      : (Math.trunc((raw + Number.EPSILON) * 100) / 100)
+          .toFixed(2)
+          .replace(/\.00$/, '')
+          .replace(/(\.\d)0$/, '$1');
+  return `${value}%`;
+};
 function bank() {
   const f: Fact[] = [];
   FR.forEach(([n, d]) => {
@@ -361,7 +374,7 @@ const MODES: [Mode, string, string, typeof Brain][] = [
 
 export default function Home() {
   const [view, setView] = useState<
-      'dashboard' | 'practice' | 'summary' | 'mastery'
+      'dashboard' | 'practiceHub' | 'practice' | 'summary' | 'mastery'
     >('dashboard'),
     [dark, setDark] = useState(false),
     [stats, setStats] = useState<Record<string, Stat>>({}),
@@ -554,14 +567,24 @@ export default function Home() {
     ).length;
   return (
     <main>
-      <Header dark={dark} setDark={setDark} view={view} setView={setView} />
+      <Header
+        dark={dark}
+        setDark={setDark}
+        view={view}
+        setView={setView}
+        attempts={history.length}
+        mastered={mastered}
+      />
       {view === 'dashboard' && (
-        <Dashboard
+        <HomeDashboard
           today={today}
           history={history}
           rows={topicRows}
-          mastered={mastered}
-          stats={stats}
+          start={start}
+        />
+      )}{' '}
+      {view === 'practiceHub' && (
+        <PracticeHub
           start={start}
           topic={topic}
           setTopic={setTopic}
@@ -595,7 +618,7 @@ export default function Home() {
           weak={() => start('weak')}
         />
       )}{' '}
-      {view === 'mastery' && <Mastery stats={stats} />}
+      {view === 'mastery' && <Mastery stats={stats} history={history} />}
     </main>
   );
 }
@@ -605,11 +628,15 @@ function Header({
   setDark,
   view,
   setView,
+  attempts,
+  mastered,
 }: {
   dark: boolean;
   setDark: (x: boolean) => void;
   view: string;
-  setView: (v: 'dashboard' | 'mastery') => void;
+  setView: (v: 'dashboard' | 'practiceHub' | 'mastery') => void;
+  attempts: number;
+  mastered: number;
 }) {
   return (
     <header
@@ -629,10 +656,8 @@ function Header({
           Home
         </button>
         <button
-          onClick={() => {
-            setView('dashboard');
-            setTimeout(() => document.getElementById('practice-modes')?.scrollIntoView({ behavior: 'smooth' }), 0);
-          }}
+          className={view === 'practiceHub' ? 'active' : ''}
+          onClick={() => setView('practiceHub')}
         >
           Practice
         </button>
@@ -644,6 +669,10 @@ function Header({
         </button>
       </nav>
       <div>
+        <div className="nav-xp" aria-label={`Level ${Math.floor(attempts / 50) + 1}, ${attempts % 50} of 50 XP`}>
+          <span><b>LVL {Math.floor(attempts / 50) + 1}</b><small>{mastered} mastered</small></span>
+          <i><b style={{ width: `${(attempts % 50) * 2}%` }} /></i>
+        </div>
         <em>SBI PO · IBPS PO</em>
         <button className="icon" onClick={() => setDark(!dark)}>
           {dark ? <Sun /> : <Moon />}
@@ -652,6 +681,104 @@ function Header({
     </header>
   );
 }
+function HomeDashboard({
+  today,
+  history,
+  rows,
+  start,
+}: {
+  today: Try[];
+  history: Try[];
+  rows: { t: Topic; score: number; tries: Try[] }[];
+  start: (m: Mode) => void;
+}) {
+  const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - 6 + i);
+      return history.filter((x) => day(x.at) === day(d.getTime()));
+    }),
+    streak = new Set(history.map((x) => day(x.at))).size,
+    experienced = history.length >= 30,
+    earlier = history.slice(0, Math.max(0, history.length - 10)),
+    recent = history.slice(-10),
+    accuracyNote = experienced
+      ? `${accuracy(recent) - accuracy(earlier.slice(-10)) >= 0 ? '+' : ''}${accuracy(recent) - accuracy(earlier.slice(-10))} pts over prior set`
+      : 'Complete 3 sessions to unlock trends',
+    paceNote = experienced
+      ? `${Math.abs((average(recent) - average(earlier.slice(-10))) / 1000).toFixed(1)}s ${average(recent) <= average(earlier.slice(-10)) ? 'faster' : 'to recover'}`
+      : 'Baseline builds with every answer';
+  return (
+    <div className="page home-dashboard">
+      <section className="home-hero" aria-label="Today's recommended workout">
+        <div className="hero-copy">
+          <span className="command-icon"><Target /></span>
+          <div>
+            <small>DAILY PRACTICE</small>
+            <h1>{history.length ? "Today's adaptive workout" : 'Establish your baseline'}</h1>
+            <p>{history.length ? '12 weak facts · 8 scheduled reviews · 5 mixed calculations' : 'A focused one-minute diagnostic will reveal your fastest and weakest fact families.'}</p>
+            <em>{history.length ? `Recommended because ${TOPICS[rows[0].t].short} currently needs the most attention.` : 'This first result becomes the benchmark for measuring every future gain.'}</em>
+          </div>
+        </div>
+        <div className="hero-actions">
+          <Button variant="outline" onClick={() => start('mixed')}>Mixed practice</Button>
+          <Button onClick={() => start(history.length ? 'mixed' : 'sprint')}><Play fill="currentColor" /> {history.length ? 'Begin workout' : 'Start diagnostic'}</Button>
+        </div>
+      </section>
+
+      <section className="metrics home-pulse" aria-label="Today's performance pulse">
+        <Metric I={Target} title="Today's questions" value={String(today.length)} note={experienced ? `${recent.length} in your latest set` : 'Building your baseline'} tone="purple" />
+        <Metric I={Check} title="Today's accuracy" value={`${accuracy(today)}%`} note={accuracyNote} tone="green" />
+        <Metric I={Clock3} title="Avg. time per question" value={`${today.length ? (average(today) / 1000).toFixed(1) : '0.0'}s`} note={paceNote} tone="blue" />
+        <div className="metric streak-metric">
+          <i className={streak ? 'fire active' : 'fire empty'}><Flame /></i>
+          <span><small>Practice streak</small><b>{streak} {streak === 1 ? 'day' : 'days'}</b><em>{experienced ? `${days.filter((d) => d.length >= 10).length} target days this week` : 'Build a consistent rhythm'}</em></span>
+          <div className="streak-dots" aria-label="Seven-day practice record">{days.map((d, i) => <i key={i} className={d.length >= 10 && accuracy(d) >= 90 ? 'hit' : d.length ? 'active' : ''} title={`${d.length} questions`} />)}</div>
+        </div>
+      </section>
+
+      <section className="home-intervention panel" aria-label="Targeted interventions">
+        <Heading over="TARGETED INTERVENTION" title="Needs attention" />
+        {!history.length ? (
+          <div className="intervention-empty"><FlagTriangleRight /><span><b>Your first benchmark awaits</b><small>Complete the diagnostic to reveal the exact facts that need attention.</small></span></div>
+        ) : (
+          <div className="intervention-list">{rows.slice(0, 3).map((r) => <div key={r.t}><i className={r.score >= 90 ? 'elite' : r.score >= 50 ? 'grinding' : 'target'} /><span><b>{TOPICS[r.t].short}</b><small>{r.tries.length ? `${accuracy(r.tries)}% accurate · ${(average(r.tries) / 1000).toFixed(1)}s average` : 'Level 1 · Ready to rank'}</small></span><em>{r.tries.length ? `${r.score}%` : 'UNRANKED'}</em></div>)}</div>
+        )}
+        <Button onClick={() => start(history.length ? 'weak' : 'sprint')}><Target /> {history.length ? 'Drill Weaknesses' : 'Start diagnostic'}</Button>
+      </section>
+    </div>
+  );
+}
+
+function PracticeHub({
+  start,
+  topic,
+  setTopic,
+  group,
+  setGroup,
+}: {
+  start: (m: Mode) => void;
+  topic: Topic;
+  setTopic: (t: Topic) => void;
+  group: string;
+  setGroup: (g: string) => void;
+}) {
+  const groups = [...new Set(FACTS.filter((f) => f.topic === topic).map((f) => f.group))];
+  useEffect(() => { if (!groups.includes(group)) setGroup(groups[0]); }, [topic]);
+  return (
+    <div className="page practice-hub">
+      <div className="masteryTitle"><span><small>PRACTICE</small><h1>Choose your training session</h1><p>Start with the recommended mix or target one specific recall skill.</p></span></div>
+      <section className="panel session-panel" id="practice-modes">
+        <Heading over="ALL PRACTICE MODES" title="Train with purpose" />
+        <div className="modes">{MODES.map(([id, title, copy, I]) => <button key={id} className={id === 'mixed' ? 'featured' : ''} onClick={() => start(id)}><i><I /></i><span><b>{title}</b><small>{copy}</small></span><Play className="start-icon" fill="currentColor" /></button>)}</div>
+      </section>
+      <section className="panel focus-hub">
+        <Heading over="FOCUSED PRACTICE" title="Drill a specific group" />
+        <div className="focus"><select value={topic} onChange={(e) => setTopic(e.target.value as Topic)}>{(Object.keys(TOPICS) as Topic[]).map((t) => <option key={t} value={t}>{TOPICS[t].name}</option>)}</select><select value={group} onChange={(e) => setGroup(e.target.value)}>{groups.map((g) => <option key={g}>{g}</option>)}</select><Button onClick={() => start('focus')}>Start drill <ChevronRight /></Button></div>
+      </section>
+    </div>
+  );
+}
+
 function Dashboard({
   today,
   history,
@@ -1212,8 +1339,16 @@ function Summary({
     </div>
   );
 }
-function Mastery({ stats }: { stats: Record<string, Stat> }) {
+function Mastery({ stats, history }: { stats: Record<string, Stat>; history: Try[] }) {
   const [topic, setTopic] = useState<Topic>('fractions');
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6 + i);
+    return {
+      label: i === 6 ? 'Today' : `Day ${i + 1}`,
+      tries: history.filter((x) => day(x.at) === day(d.getTime())),
+    };
+  });
   return (
     <div className="page mastery">
       <div className="masteryTitle">
@@ -1225,6 +1360,17 @@ function Mastery({ stats }: { stats: Record<string, Stat> }) {
           </p>
         </span>
       </div>
+      <section className="panel progress-rhythm" aria-label="Seven-day practice rhythm">
+        <Heading over="PRACTICE RHYTHM" title="Last seven days" />
+        <div className="progress-rhythm-grid">
+          {days.map((d) => (
+            <div key={d.label}>
+              <i className={d.tries.length >= 10 && accuracy(d.tries) >= 90 ? 'hit' : d.tries.length ? 'active' : ''}>{d.tries.length || '·'}</i>
+              <span><b>{d.label}</b><small>{d.tries.length ? `${accuracy(d.tries)}% · ${(average(d.tries) / 1000).toFixed(1)}s` : 'No session'}</small></span>
+            </div>
+          ))}
+        </div>
+      </section>
       <nav>
         {(Object.keys(TOPICS) as Topic[]).map((t) => (
           <button
