@@ -695,6 +695,7 @@ export default function Home() {
     ).length;
   return (
     <main>
+      {view !== 'practice' && view !== 'summary' && <MathAtmosphere />}
       <Header
         dark={dark}
         setDark={setDark}
@@ -768,6 +769,20 @@ export default function Home() {
         <Mastery stats={stats} history={history} start={start} />
       )}
     </main>
+  );
+}
+
+function MathAtmosphere() {
+  const symbols = [
+    '7/16', '43.75%', '√729', '17 × 8', '13³', '27²', '1 5/8',
+    '136 ÷ 17', '12.5%', '19 × 20', '33.33%', '25²', '1/8',
+    '2197', 'x + 1', '62.5%', '15³', '289', '3/16', '144 ÷ 12',
+    '91.66%', '35²', '11 × 12', '∑', '÷', '×', '%', '²', '³',
+  ];
+  return (
+    <div className="math-atmosphere" aria-hidden="true">
+      {symbols.map((symbol, index) => <span key={`${symbol}-${index}`}>{symbol}</span>)}
+    </div>
   );
 }
 
