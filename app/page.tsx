@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Sun,
   Target,
+  User,
   X,
   Zap,
 } from 'lucide-react';
@@ -55,6 +56,8 @@ type Try = {
   q: string;
   a: string;
   correct: boolean;
+  skipped?: boolean;
+  raw?: string;
   ms: number;
   at: number;
 };
@@ -170,6 +173,16 @@ const FR: [number, number][] = [
   [8, 25],
   [9, 25],
 ];
+const MIXED: [number, number, number][] = [
+  [1, 1, 4],
+  [1, 1, 2],
+  [1, 5, 8],
+  [1, 3, 4],
+  [2, 1, 4],
+  [2, 1, 2],
+  [2, 3, 4],
+  [3, 1, 8],
+];
 const percent = (n: number, d: number) => {
   const scaledNumerator = n * 100;
   const whole = Math.floor(scaledNumerator / d);
@@ -209,6 +222,28 @@ function bank() {
         q: `${p} → ?`,
         a: `${n}/${d}`,
         reverse: true,
+      },
+    );
+  });
+  MIXED.forEach(([whole, n, d]) => {
+    const improper = whole * d + n,
+      p = percent(improper, d),
+      mixed = `${whole} ${n}/${d}`;
+    f.push(
+      {
+        id: `fm${whole}-${n}-${d}`,
+        topic: 'fractions',
+        group: 'Mixed numbers',
+        q: `${p} → ?`,
+        a: mixed,
+        reverse: true,
+      },
+      {
+        id: `fm${whole}-${n}-${d}r`,
+        topic: 'fractions',
+        group: 'Mixed numbers',
+        q: `${mixed} → ?`,
+        a: p,
       },
     );
   });
@@ -311,12 +346,16 @@ const level = (s?: Stat, target = 2200): Level => {
 };
 const norm = (v: string) => v.trim().replace(/%|\s/g, '').toLowerCase(),
   day = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA'),
-  accuracy = (a: Try[]) =>
-    a.length
-      ? Math.round((a.filter((x) => x.correct).length / a.length) * 100)
-      : 0,
-  average = (a: Try[]) =>
-    a.length ? a.reduce((n, x) => n + x.ms, 0) / a.length : 0;
+  accuracy = (a: Try[]) => {
+    const scored = a.filter((x) => !x.skipped);
+    return scored.length
+      ? Math.round((scored.filter((x) => x.correct).length / scored.length) * 100)
+      : 0;
+  },
+  average = (a: Try[]) => {
+    const scored = a.filter((x) => !x.skipped);
+    return scored.length ? scored.reduce((n, x) => n + x.ms, 0) / scored.length : 0;
+  };
 function pick(pool: Fact[], stats: Record<string, Stat>, old?: string) {
   const w = pool
       .filter((f) => f.id !== old)
@@ -345,7 +384,19 @@ function pick(pool: Fact[], stats: Record<string, Stat>, old?: string) {
 function choices(f: Fact) {
   const n = Number(f.a.replace('%', ''));
   if (Number.isNaN(n)) {
-    const others = FACTS.filter((x) => x.topic === f.topic && x.id !== f.id)
+    const answerKind = f.a.includes(' ') && f.a.includes('/')
+      ? 'mixed'
+      : f.a.includes('/')
+        ? 'fraction'
+        : 'text';
+    const others = FACTS.filter((x) => {
+      const candidateKind = x.a.includes(' ') && x.a.includes('/')
+        ? 'mixed'
+        : x.a.includes('/')
+          ? 'fraction'
+          : 'text';
+      return x.topic === f.topic && x.id !== f.id && candidateKind === answerKind;
+    })
       .sort(() => Math.random() - 0.5)
       .slice(0, 3)
       .map((x) => x.a);
@@ -388,6 +439,9 @@ export default function Home() {
     [ready, setReady] = useState(false),
     [mode, setMode] = useState<Mode>('mixed'),
     [session, setSession] = useState<Try[]>([]),
+    [skippedIds, setSkippedIds] = useState<string[]>([]),
+    [retryPool, setRetryPool] = useState<string[]>([]),
+    [profileOpen, setProfileOpen] = useState(false),
     [fact, setFact] = useState(FACTS.find((f) => f.id === 'f7-16')!),
     [opts, setOpts] = useState<string[]>([]),
     [answer, setAnswer] = useState(''),
@@ -410,6 +464,7 @@ export default function Home() {
       setHistory(s.history || []);
       setCompletedSessions(s.completedSessions || 0);
       setDark(!!s.dark);
+      setInput(s.input === 'typed' ? 'typed' : 'mcq');
     } catch {}
     setReady(true);
   }, []);
@@ -423,10 +478,13 @@ export default function Home() {
           history: history.slice(-1500),
           completedSessions,
           dark,
+          input,
         }),
       );
-  }, [stats, history, completedSessions, dark, ready]);
+  }, [stats, history, completedSessions, dark, input, ready]);
   const pool = useMemo(() => {
+    if (retryPool.length)
+      return FACTS.filter((fact) => retryPool.includes(fact.id));
     if (mode === 'learn') return FACTS.filter((f) => !f.reverse);
     if (mode === 'focus')
       return FACTS.filter((f) => f.topic === topic && f.group === group);
@@ -439,23 +497,31 @@ export default function Home() {
       return p.length ? p : FACTS;
     }
     return FACTS;
-  }, [mode, topic, group, stats]);
-  function next(old?: string) {
-    const f =
-      mode === 'random'
-        ? pool.filter((x) => x.id !== old)[
-            Math.floor(Math.random() * Math.max(1, pool.length - 1))
-          ]
-        : pick(pool, stats, old);
-    setFact(f);
-    setOpts(choices(f));
+  }, [mode, topic, group, stats, retryPool]);
+  function showFact(nextFact: Fact) {
+    setFact(nextFact);
+    setOpts(choices(nextFact));
     setAnswer('');
     setResult(null);
     started.current = performance.now();
     setTimeout(() => field.current?.focus(), 20);
   }
+  function next(old?: string) {
+    const available = pool.filter(
+        (candidate) => candidate.id !== old && !skippedIds.includes(candidate.id),
+      ),
+      source = available.length ? available : pool.filter((candidate) => candidate.id !== old),
+      selectable = source.length ? source : pool,
+      f =
+      mode === 'random'
+        ? selectable[Math.floor(Math.random() * selectable.length)]
+        : pick(selectable, stats, old);
+    showFact(f);
+  }
   function start(m: Mode) {
     sessionCounted.current = false;
+    setSkippedIds([]);
+    setRetryPool([]);
     setMode(m);
     setSession([]);
     setLeft(60);
@@ -468,11 +534,43 @@ export default function Home() {
             ? FACTS.filter((f) => !f.reverse)
             : FACTS;
       const f = pick(p, stats);
-      setFact(f);
-      setOpts(choices(f));
-      setResult(null);
-      started.current = performance.now();
+      showFact(f);
     }, 0);
+  }
+  function retryFacts(ids: string[]) {
+    const unique = [...new Set(ids)],
+      retryFacts = FACTS.filter((candidate) => unique.includes(candidate.id));
+    if (!retryFacts.length) return start('weak');
+    sessionCounted.current = false;
+    setMode('weak');
+    setRetryPool(unique);
+    setSkippedIds([]);
+    setSession([]);
+    setLeft(60);
+    setView('practice');
+    setTimeout(() => showFact(pick(retryFacts, stats)), 0);
+  }
+  function reviewSkipped() {
+    const skippedFact = FACTS.find((candidate) => candidate.id === skippedIds[0]);
+    if (skippedFact) showFact(skippedFact);
+  }
+  function skip() {
+    if (result) return;
+    const t: Try = {
+      id: fact.id,
+      topic: fact.topic,
+      q: fact.q,
+      a: fact.a,
+      correct: false,
+      skipped: true,
+      raw: '',
+      ms: Math.max(100, performance.now() - started.current),
+      at: Date.now(),
+    };
+    setSkippedIds((ids) => ids.includes(fact.id) ? ids : [...ids, fact.id]);
+    setHistory((items) => [...items, t]);
+    setSession((items) => [...items, t]);
+    next(fact.id);
   }
   function finishSession() {
     if (!sessionCounted.current) {
@@ -499,6 +597,7 @@ export default function Home() {
         q: fact.q,
         a: fact.a,
         correct: ok,
+        raw,
         ms,
         at: Date.now(),
       },
@@ -523,12 +622,18 @@ export default function Home() {
     }));
     setHistory((h) => [...h, t]);
     setSession((s) => [...s, t]);
+    const remainingSkipped = skippedIds.filter((id) => id !== fact.id),
+      answeredCount = session.filter((item) => !item.skipped).length + 1;
+    setSkippedIds(remainingSkipped);
     setResult({ ok, ms, raw });
     setTimeout(
-      () =>
-        limit && session.length + 1 >= limit
-          ? finishSession()
-          : next(fact.id),
+      () => {
+        if (limit && answeredCount >= limit) {
+          const revisit = FACTS.find((candidate) => candidate.id === remainingSkipped[0]);
+          return revisit ? showFact(revisit) : finishSession();
+        }
+        next(fact.id);
+      },
       ok ? 650 : 1150,
     );
   }
@@ -557,6 +662,8 @@ export default function Home() {
         ['1', '2', '3', '4'].includes(e.key)
       )
         submit(opts[+e.key - 1]);
+      if (view === 'practice' && !result && input === 'mcq' && e.key.toLowerCase() === 's')
+        skip();
       if (view === 'practice' && e.key === 'Escape') finishSession();
     };
     addEventListener('keydown', h);
@@ -594,9 +701,21 @@ export default function Home() {
         view={view}
         setView={setView}
         onMixed={() => start('mixed')}
+        onProfile={() => setProfileOpen(true)}
         attempts={history.length}
         mastered={mastered}
       />
+      {profileOpen && (
+        <ProfilePanel
+          dark={dark}
+          setDark={setDark}
+          input={input}
+          setInput={setInput}
+          attempts={history.length}
+          mastered={mastered}
+          close={() => setProfileOpen(false)}
+        />
+      )}
       {view === 'dashboard' && (
         <HomeDashboard
           today={today}
@@ -625,10 +744,13 @@ export default function Home() {
           setAnswer={setAnswer}
           input={input}
           setInput={setInput}
-          current={session.length + 1}
+          current={session.filter((item) => !item.skipped).length + 1}
           limit={limit}
           left={mode === 'sprint' ? left : null}
           end={finishSession}
+          skip={skip}
+          skippedCount={skippedIds.length}
+          reviewSkipped={reviewSkipped}
           field={field}
         />
       )}{' '}
@@ -639,6 +761,7 @@ export default function Home() {
           sprint={mode === 'sprint'}
           home={() => setView('dashboard')}
           weak={() => start('weak')}
+          retry={retryFacts}
         />
       )}{' '}
       {view === 'mastery' && (
@@ -654,6 +777,7 @@ function Header({
   view,
   setView,
   onMixed,
+  onProfile,
   attempts,
   mastered,
 }: {
@@ -662,6 +786,7 @@ function Header({
   view: string;
   setView: (v: 'dashboard' | 'practiceHub' | 'mastery') => void;
   onMixed: () => void;
+  onProfile: () => void;
   attempts: number;
   mastered: number;
 }) {
@@ -706,7 +831,9 @@ function Header({
           <span><b>LVL {Math.floor(attempts / 50) + 1}</b><small>{mastered} mastered</small></span>
           <i><b style={{ width: `${(attempts % 50) * 2}%` }} /></i>
         </div>
-        <em>SBI PO · IBPS PO</em>
+        <button className="icon profile-trigger" aria-label="Open learner profile and settings" onClick={onProfile}>
+          <User />
+        </button>
         <button
           className="icon"
           aria-label={dark ? 'Use light mode' : 'Use dark mode'}
@@ -716,6 +843,51 @@ function Header({
         </button>
       </div>
     </header>
+  );
+}
+function ProfilePanel({
+  dark,
+  setDark,
+  input,
+  setInput,
+  attempts,
+  mastered,
+  close,
+}: {
+  dark: boolean;
+  setDark: (value: boolean) => void;
+  input: 'mcq' | 'typed';
+  setInput: (value: 'mcq' | 'typed') => void;
+  attempts: number;
+  mastered: number;
+  close: () => void;
+}) {
+  return (
+    <div className="profile-backdrop" role="presentation" onMouseDown={close}>
+      <section className="profile-panel" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header>
+          <span><small>LEARNER PROFILE</small><h2 id="profile-title">Guest learner</h2></span>
+          <button className="icon" aria-label="Close profile and settings" onClick={close}><X /></button>
+        </header>
+        <div className="profile-level">
+          <i><User /></i>
+          <span><b>Level {Math.floor(attempts / 50) + 1}</b><small>{attempts} answers · {mastered} mastered facts</small></span>
+        </div>
+        <p>Your progress is stored on this device. Account sign-in and cross-device sync will be added only when the production data architecture is selected.</p>
+        <div className="preference-row">
+          <span><b>Default answer mode</b><small>Choose how new sessions open.</small></span>
+          <div role="group" aria-label="Default answer mode">
+            <button className={input === 'mcq' ? 'active' : ''} onClick={() => setInput('mcq')}>Choices</button>
+            <button className={input === 'typed' ? 'active' : ''} onClick={() => setInput('typed')}>Type</button>
+          </div>
+        </div>
+        <div className="preference-row">
+          <span><b>Appearance</b><small>Use the theme that is most comfortable.</small></span>
+          <button className="preference-action" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}{dark ? 'Light mode' : 'Dark mode'}</button>
+        </div>
+        <footer><Button onClick={close}>Save preferences</Button></footer>
+      </section>
+    </div>
   );
 }
 function HomeDashboard({
@@ -749,7 +921,10 @@ function HomeDashboard({
     interventionRows = rows
       .filter((row) => row.tries.length > 0 && (accuracy(row.tries) < 85 || average(row.tries) > 8000))
       .slice(0, 3),
-    recommendedTopic = interventionRows[0]?.t ?? rows.find((row) => row.tries.length)?.t ?? rows[0].t;
+    recommendedTopic = interventionRows[0]?.t ?? rows.find((row) => row.tries.length)?.t ?? rows[0].t,
+    strongestTopic = [...rows]
+      .filter((row) => row.tries.some((item) => !item.skipped))
+      .sort((a, b) => accuracy(b.tries) - accuracy(a.tries) || average(a.tries) - average(b.tries))[0];
   return (
     <div className="page home-dashboard">
       <section className="home-hero" aria-label="Today's recommended workout">
@@ -777,6 +952,15 @@ function HomeDashboard({
           <div className="streak-dots" aria-label="Seven-day practice record">{days.map((d, i) => <i key={i} className={d.length >= 10 && accuracy(d) >= 90 ? 'hit' : d.length ? 'active' : ''} title={`${d.length} questions`} />)}</div>
         </div>
       </section>
+
+      {!!history.length && (
+        <section className="recent-signal" aria-label="Recent performance summary">
+          <span><small>RECENT FORM</small><b>{accuracy(recent)}% accuracy</b><em>{recent.filter((item) => !item.skipped).length} scored answers</em></span>
+          <span><small>RECALL PACE</small><b>{(average(recent) / 1000).toFixed(1)}s average</b><em>{experienced ? paceNote : 'Building a reliable comparison'}</em></span>
+          <span><small>STRONGEST TOPIC</small><b>{strongestTopic ? TOPICS[strongestTopic.t].short : 'Benchmarking'}</b><em>{strongestTopic ? `${accuracy(strongestTopic.tries)}% accurate` : 'Complete more topic sets'}</em></span>
+          <button onClick={() => start('mixed')}>Continue adaptive workout <ChevronRight /></button>
+        </section>
+      )}
 
       <section className="home-intervention panel" aria-label="Targeted interventions">
         <Heading over="TARGETED INTERVENTION" title="Needs attention" />
@@ -1143,6 +1327,9 @@ function Practice({
   limit,
   left,
   end,
+  skip,
+  skippedCount,
+  reviewSkipped,
   field,
 }: {
   fact: Fact;
@@ -1157,8 +1344,12 @@ function Practice({
   limit: number;
   left: number | null;
   end: () => void;
+  skip: () => void;
+  skippedCount: number;
+  reviewSkipped: () => void;
   field: React.RefObject<HTMLInputElement | null>;
 }) {
+  const [confirmEnd, setConfirmEnd] = useState(false);
   return (
     <div className="practicePage">
       <header className="practiceHead">
@@ -1174,7 +1365,7 @@ function Practice({
         </span>
         <div>
           {left !== null && <b>0:{String(left).padStart(2, '0')}</b>}
-          <Button variant="outline" onClick={end}>
+          <Button variant="outline" onClick={() => skippedCount ? setConfirmEnd(true) : end()}>
             End session
           </Button>
         </div>
@@ -1258,14 +1449,59 @@ function Practice({
               </>
             )}
           </div>
+          {!result && (
+            <div className="quiz-actions">
+              <button onClick={skip}>Skip <kbd>S</kbd></button>
+              {!!skippedCount && <button onClick={reviewSkipped}>Revisit skipped <b>{skippedCount}</b></button>}
+            </div>
+          )}
         </div>
         <p>
-          <Keyboard /> Press <kbd>1</kbd>–<kbd>4</kbd> to answer · accuracy
-          before speed
+          <Keyboard /> Press <kbd>1</kbd>–<kbd>4</kbd> to answer · <kbd>S</kbd> to skip · accuracy before speed
         </p>
       </section>
+      {confirmEnd && (
+        <div className="end-backdrop" role="presentation">
+          <section className="end-confirm" role="dialog" aria-modal="true" aria-labelledby="end-title">
+            <small>UNFINISHED REVIEW</small>
+            <h2 id="end-title">{skippedCount} skipped {skippedCount === 1 ? 'question' : 'questions'} remain</h2>
+            <p>Reviewing them now keeps difficult facts from disappearing from this session.</p>
+            <div><Button variant="outline" onClick={end}>End anyway</Button><Button onClick={() => { setConfirmEnd(false); reviewSkipped(); }}>Review skipped</Button></div>
+          </section>
+        </div>
+      )}
     </div>
   );
+}
+function strategyFor(item: Try) {
+  if (item.topic === 'fractions') {
+    const mixed = `${item.q} ${item.a}`.match(/(\d+)\s+(\d+)\/(\d+)/);
+    if (mixed) {
+      const [, whole, numerator, denominator] = mixed;
+      return {
+        title: 'Convert through an improper fraction',
+        text: `Use (${whole} × ${denominator} + ${numerator})/${denominator}, then multiply by 100 for the percentage. Reverse the steps and simplify when converting back.`,
+      };
+    }
+    const fraction = `${item.q} ${item.a}`.match(/(\d+)\/(\d+)/);
+    if (fraction) {
+      const [, numerator, denominator] = fraction;
+      return {
+        title: `Anchor on 1/${denominator}`,
+        text: `Recall 1/${denominator} as a percentage, then multiply that value by ${numerator}. Keep recurring banking-exam values to their memorized two-decimal form without rounding up.`,
+      };
+    }
+  }
+  if (item.topic === 'tables') {
+    return item.q.includes('÷')
+      ? { title: 'Reverse the multiplication fact', text: `Ask which number multiplied by the divisor gives ${item.q.split('÷')[0].trim()}. Division recall should reuse the matching table fact.` }
+      : { title: 'Split around a friendly ten', text: 'Multiply by 10 first, then add the remaining multiples. With repetition, compress the steps into one recalled fact.' };
+  }
+  if (item.topic === 'squares')
+    return { title: 'Use the nearest known square', text: 'For nearby numbers use (a ± 1)² = a² ± 2a + 1, then store the result as a direct recall fact.' };
+  if (item.topic === 'cubes')
+    return { title: 'Link root and final digits', text: 'Memorize cubes as root–value pairs. The final digit narrows the possible root and helps reverse recall.' };
+  return { title: 'Use n² + n', text: 'For consecutive numbers, n(n + 1) equals n² + n. Recall the square, then add the smaller factor.' };
 }
 function Summary({
   tries,
@@ -1273,16 +1509,22 @@ function Summary({
   sprint,
   home,
   weak,
+  retry,
 }: {
   tries: Try[];
   prior: Try[];
   sprint: boolean;
   home: () => void;
   weak: () => void;
+  retry: (ids: string[]) => void;
 }) {
-  const wrong = tries.filter((x) => !x.correct),
-    review = [...new Map(wrong.map((x) => [x.id, x])).values()].slice(0, 4),
-    fast = tries.length ? Math.min(...tries.map((x) => x.ms)) : 0,
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'incorrect' | 'skipped'>('all');
+  const reviewItems = [...new Map(tries.map((x) => [x.id, x])).values()],
+    wrong = reviewItems.filter((x) => !x.correct && !x.skipped),
+    skipped = reviewItems.filter((x) => x.skipped),
+    visibleReview = reviewItems.filter((item) => reviewFilter === 'all' || (reviewFilter === 'incorrect' ? !item.correct && !item.skipped : item.skipped)),
+    scored = tries.filter((item) => !item.skipped),
+    fast = scored.length ? Math.min(...scored.map((x) => x.ms)) : 0,
     previousComparable = prior.slice(-Math.max(tries.length, 10)),
     topics = (Object.keys(TOPICS) as Topic[])
       .map((t) => ({ t, x: tries.filter((a) => a.topic === t) }))
@@ -1351,18 +1593,38 @@ function Summary({
             </em>
           </div>
           <div>
-            <small>FACTS TO REVIEW</small>
-            {review.length ? (
-              review.map((x) => (
-                <p key={x.id}>
-                  {x.q} <b>{x.a}</b>
-                </p>
-              ))
-            ) : (
-              <p>No errors — excellent control.</p>
-            )}
+            <small>REVIEW STATUS</small>
+            <b>{wrong.length} incorrect · {skipped.length} skipped</b>
+            <em>{wrong.length || skipped.length ? 'Review the explanations below, then retry the facts.' : 'No errors — excellent control.'}</em>
           </div>
         </div>
+        <section className="answer-review" aria-label="Question review">
+          <header>
+            <span><small>ANSWER REVIEW</small><h2>Understand every attempt</h2></span>
+            <nav aria-label="Review filters">
+              <button className={reviewFilter === 'all' ? 'active' : ''} onClick={() => setReviewFilter('all')}>All {reviewItems.length}</button>
+              <button className={reviewFilter === 'incorrect' ? 'active' : ''} onClick={() => setReviewFilter('incorrect')}>Incorrect {wrong.length}</button>
+              <button className={reviewFilter === 'skipped' ? 'active' : ''} onClick={() => setReviewFilter('skipped')}>Skipped {skipped.length}</button>
+            </nav>
+          </header>
+          <div className="review-list">
+            {visibleReview.length ? visibleReview.map((item) => {
+              const strategy = strategyFor(item);
+              return (
+                <article key={item.id} className={item.skipped ? 'skipped' : item.correct ? 'correct' : 'incorrect'}>
+                  <div className="review-question">
+                    <span><small>{item.skipped ? 'SKIPPED' : item.correct ? 'CORRECT' : 'INCORRECT'}</small><b>{item.q}</b></span>
+                    <em>{item.skipped ? '—' : `${(item.ms / 1000).toFixed(2)}s`}</em>
+                  </div>
+                  <div className="review-answer"><span><small>YOUR ANSWER</small><b>{item.skipped ? 'Not answered' : item.raw || 'Not recorded'}</b></span><span><small>CORRECT ANSWER</small><b>{item.a}</b></span></div>
+                  <div className="review-strategy"><Brain /><span><b>{strategy.title}</b><p>{strategy.text}</p></span></div>
+                  {!item.correct && <button onClick={() => retry([item.id])}>Retry this fact <ChevronRight /></button>}
+                </article>
+              );
+            }) : <p className="review-empty">No questions match this filter.</p>}
+          </div>
+          {!!(wrong.length || skipped.length) && <Button onClick={() => retry([...wrong, ...skipped].map((item) => item.id))}><RotateCcw /> Retry missed questions</Button>}
+        </section>
         {sprint && (
           <div className="sprint">
             <Zap />
