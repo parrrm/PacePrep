@@ -61,6 +61,21 @@ type Try = {
   ms: number;
   at: number;
 };
+type AuthUser = {
+  userId: string;
+  displayName: string;
+  email: string;
+  fullName: string | null;
+};
+type AuthStatus = 'checking' | 'anonymous' | 'guest' | 'signed-in';
+type CloudStatus = 'idle' | 'saving' | 'saved' | 'error';
+type SavedProgress = {
+  stats?: Record<string, Stat>;
+  history?: Try[];
+  completedSessions?: number;
+  dark?: boolean;
+  input?: 'mcq' | 'typed';
+};
 const TOPICS: Record<Topic, { name: string; short: string; target: number }> = {
   fractions: {
     name: 'Fraction ↔ Percentage',
@@ -402,19 +417,18 @@ function choices(f: Fact) {
       .map((x) => x.a);
     return [f.a, ...others].sort(() => Math.random() - 0.5);
   }
-  const d =
-    f.topic === 'fractions'
-      ? [6.25, -6.25, 12.5]
-      : n > 500
-        ? [11, -21, 31]
-        : [1, -2, 3];
-  return [
-    f.a,
-    ...d.map(
-      (x) =>
-        `${Math.max(0, Math.round((n + x) * 100) / 100)}${f.a.includes('%') ? '%' : ''}`,
-    ),
-  ].sort(() => Math.random() - 0.5);
+  const usesPercent = f.a.includes('%');
+  const exactDistractors = [...new Set(
+    FACTS.filter((candidate) =>
+      candidate.id !== f.id &&
+      candidate.topic === f.topic &&
+      candidate.a.includes('%') === usesPercent &&
+      !Number.isNaN(Number(candidate.a.replace('%', ''))),
+    ).map((candidate) => candidate.a),
+  )]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+  return [f.a, ...exactDistractors].sort(() => Math.random() - 0.5);
 }
 const MODES: [Mode, string, string, typeof Brain][] = [
   ['learn', 'Learn', 'Build direct recall', BookOpen],
@@ -453,7 +467,11 @@ export default function Home() {
     [input, setInput] = useState<'mcq' | 'typed'>('mcq'),
     [topic, setTopic] = useState<Topic>('fractions'),
     [group, setGroup] = useState('Denominator 2'),
-    [left, setLeft] = useState(60);
+    [left, setLeft] = useState(60),
+    [authStatus, setAuthStatus] = useState<AuthStatus>('checking'),
+    [authUser, setAuthUser] = useState<AuthUser | null>(null),
+    [cloudReady, setCloudReady] = useState(false),
+    [cloudStatus, setCloudStatus] = useState<CloudStatus>('idle');
   const started = useRef(performance.now()),
     sessionCounted = useRef(false),
     field = useRef<HTMLInputElement>(null);
@@ -482,6 +500,61 @@ export default function Home() {
         }),
       );
   }, [stats, history, completedSessions, dark, input, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    fetch('/api/progress', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!active) return;
+        if (response.status === 401) {
+          setAuthStatus('anonymous');
+          return;
+        }
+        if (!response.ok) throw new Error('Progress service unavailable');
+        const payload = (await response.json()) as {
+          user: AuthUser;
+          progress: SavedProgress | null;
+        };
+        setAuthUser(payload.user);
+        if (payload.progress) {
+          setStats(payload.progress.stats || {});
+          setHistory(payload.progress.history || []);
+          setCompletedSessions(payload.progress.completedSessions || 0);
+          setDark(!!payload.progress.dark);
+          setInput(payload.progress.input === 'typed' ? 'typed' : 'mcq');
+        }
+        setCloudReady(true);
+        setCloudStatus('saved');
+        setAuthStatus('signed-in');
+      })
+      .catch(() => {
+        if (active) setAuthStatus('anonymous');
+      });
+    return () => { active = false; };
+  }, [ready]);
+  useEffect(() => {
+    if (!ready || !cloudReady || authStatus !== 'signed-in') return;
+    setCloudStatus('saving');
+    const id = window.setTimeout(() => {
+      fetch('/api/progress', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          stats,
+          history: history.slice(-1500),
+          completedSessions,
+          dark,
+          input,
+        }),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error('Cloud save failed');
+          setCloudStatus('saved');
+        })
+        .catch(() => setCloudStatus('error'));
+    }, 700);
+    return () => window.clearTimeout(id);
+  }, [stats, history, completedSessions, dark, input, ready, cloudReady, authStatus]);
   const pool = useMemo(() => {
     if (retryPool.length)
       return FACTS.filter((fact) => retryPool.includes(fact.id));
@@ -553,6 +626,21 @@ export default function Home() {
   function reviewSkipped() {
     const skippedFact = FACTS.find((candidate) => candidate.id === skippedIds[0]);
     if (skippedFact) showFact(skippedFact);
+  }
+  async function deleteProgress() {
+    if (!window.confirm('Permanently delete your cloud progress and reset this device?')) return;
+    const response = await fetch('/api/progress', { method: 'DELETE' });
+    if (!response.ok) {
+      setCloudStatus('error');
+      return;
+    }
+    setStats({});
+    setHistory([]);
+    setCompletedSessions(0);
+    setCloudStatus('saved');
+    localStorage.removeItem('recall-lab');
+    setProfileOpen(false);
+    setView('dashboard');
   }
   function skip() {
     if (result) return;
@@ -693,6 +781,14 @@ export default function Home() {
     mastered = FACTS.filter(
       (f) => level(stats[f.id], TOPICS[f.topic].target) === 'Mastered',
     ).length;
+  if (authStatus === 'checking' || authStatus === 'anonymous') {
+    return (
+      <LandingPage
+        checking={authStatus === 'checking'}
+        onGuest={() => setAuthStatus('guest')}
+      />
+    );
+  }
   return (
     <main>
       {view !== 'practice' && view !== 'summary' && <MathAtmosphere />}
@@ -714,6 +810,9 @@ export default function Home() {
           setInput={setInput}
           attempts={history.length}
           mastered={mastered}
+          user={authUser}
+          cloudStatus={cloudStatus}
+          deleteProgress={deleteProgress}
           close={() => setProfileOpen(false)}
         />
       )}
@@ -724,6 +823,7 @@ export default function Home() {
           completedSessions={completedSessions}
           rows={topicRows}
           start={start}
+          openPractice={() => setView('practiceHub')}
         />
       )}{' '}
       {view === 'practiceHub' && (
@@ -772,12 +872,71 @@ export default function Home() {
   );
 }
 
+function LandingPage({ checking, onGuest }: { checking: boolean; onGuest: () => void }) {
+  return (
+    <main className="landing-shell">
+      <MathAtmosphere />
+      <header className="landing-nav">
+        <span className="brand" aria-label="RecallLab home">
+          <b><Zap size={16} /></b>Recall<span>Lab</span>
+        </span>
+        <div>
+          <button onClick={onGuest}>Continue as guest</button>
+          <a href="/signin-with-chatgpt?return_to=/" target="_top">Sign in / Register</a>
+        </div>
+      </header>
+      <section className="landing-hero">
+        <div className="landing-copy">
+          <small>MENTAL MATH TRAINING FOR COMPETITIVE EXAMS</small>
+          <h1>Turn calculation into instant recall.</h1>
+          <p>Train the exact fractions, tables, squares, cubes, and mental patterns that decide speed in SBI PO and IBPS PO quantitative aptitude.</p>
+          <div className="landing-actions">
+            <a href="/signin-with-chatgpt?return_to=/" target="_top">
+              <User /> {checking ? 'Checking your session…' : 'Sign in / Register with ChatGPT'}
+            </a>
+            <button onClick={onGuest}>Try without an account <ChevronRight /></button>
+          </div>
+          <div className="landing-trust">
+            <span><Check /> No password handled by RecallLab</span>
+            <span><Check /> Guest practice stays on this device</span>
+            <span><Check /> Signed-in progress syncs securely</span>
+          </div>
+        </div>
+        <aside className="landing-preview" aria-label="RecallLab training preview">
+          <small>YOUR FIRST BENCHMARK</small>
+          <div className="preview-question"><b>7/16</b><span>→</span><strong>43.75%</strong></div>
+          <p>Accuracy first. Then faster recall, measured answer by answer.</p>
+          <div className="preview-metrics">
+            <span><small>ACCURACY</small><b>91%</b></span>
+            <span><small>AVG. TIME</small><b>2.4s</b></span>
+            <span><small>IMPROVEMENT</small><b>−1.1s</b></span>
+          </div>
+        </aside>
+      </section>
+      <section className="landing-paths" aria-label="Training paths">
+        <article><BookOpen /><span><b>Build recall</b><small>Learn core facts with direct and reverse practice.</small></span></article>
+        <article><Target /><span><b>Attack weak areas</b><small>Spaced repetition prioritizes slow or inaccurate facts.</small></span></article>
+        <article><Clock3 /><span><b>Build exam pace</b><small>Tests and sprints show measurable speed gains.</small></span></article>
+      </section>
+      <footer className="landing-footer">
+        <span>RecallLab stores practice data only to measure learning progress.</span>
+        <span>Guest mode is device-local · Signed-in mode uses secure cloud storage</span>
+      </footer>
+    </main>
+  );
+}
+
 function MathAtmosphere() {
   const symbols = [
     '7/16', '43.75%', '√729', '17 × 8', '13³', '27²', '1 5/8',
     '136 ÷ 17', '12.5%', '19 × 20', '33.33%', '25²', '1/8',
     '2197', 'x + 1', '62.5%', '15³', '289', '3/16', '144 ÷ 12',
     '91.66%', '35²', '11 × 12', '∑', '÷', '×', '%', '²', '³',
+    '5/8', '37.5%', '22 × 7', '31²', '14³', '625', '8/9',
+    '83.33%', '18 × 9', '√1024', '7³', '121', '4/15', '26 × 6',
+    '2 1/4', '225%', '29²', '1728', '15 × 16', '9/20', '45%',
+    '23 × 8', '34²', '11³', '75%', '5/12', '140 ÷ 14', '19²',
+    '6.25%', '13 × 14', '10³', '7/8', '87.5%', '30²', '24 × 9',
   ];
   return (
     <div className="math-atmosphere" aria-hidden="true">
@@ -867,6 +1026,9 @@ function ProfilePanel({
   setInput,
   attempts,
   mastered,
+  user,
+  cloudStatus,
+  deleteProgress,
   close,
 }: {
   dark: boolean;
@@ -875,20 +1037,27 @@ function ProfilePanel({
   setInput: (value: 'mcq' | 'typed') => void;
   attempts: number;
   mastered: number;
+  user: AuthUser | null;
+  cloudStatus: CloudStatus;
+  deleteProgress: () => void;
   close: () => void;
 }) {
   return (
     <div className="profile-backdrop" role="presentation" onMouseDown={close}>
       <section className="profile-panel" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
         <header>
-          <span><small>LEARNER PROFILE</small><h2 id="profile-title">Guest learner</h2></span>
+          <span><small>LEARNER PROFILE</small><h2 id="profile-title">{user?.displayName || 'Guest learner'}</h2></span>
           <button className="icon" aria-label="Close profile and settings" onClick={close}><X /></button>
         </header>
         <div className="profile-level">
           <i><User /></i>
           <span><b>Level {Math.floor(attempts / 50) + 1}</b><small>{attempts} answers · {mastered} mastered facts</small></span>
         </div>
-        <p>Your progress is stored on this device. Account sign-in and cross-device sync will be added only when the production data architecture is selected.</p>
+        {user ? (
+          <p className="profile-sync"><Check /> {cloudStatus === 'saving' ? 'Saving progress…' : cloudStatus === 'error' ? 'Cloud sync needs attention.' : 'Progress synced securely across signed-in devices.'}<small>{user.email}</small></p>
+        ) : (
+          <p>Your progress is stored on this device. <a href="/signin-with-chatgpt?return_to=/" target="_top">Sign in with ChatGPT</a> to keep it across devices.</p>
+        )}
         <div className="preference-row">
           <span><b>Default answer mode</b><small>Choose how new sessions open.</small></span>
           <div role="group" aria-label="Default answer mode">
@@ -900,7 +1069,11 @@ function ProfilePanel({
           <span><b>Appearance</b><small>Use the theme that is most comfortable.</small></span>
           <button className="preference-action" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}{dark ? 'Light mode' : 'Dark mode'}</button>
         </div>
-        <footer><Button onClick={close}>Save preferences</Button></footer>
+        <footer>
+          {user && <button className="delete-progress" onClick={deleteProgress}>Delete progress</button>}
+          {user && <a className="sign-out" href="/signout-with-chatgpt?return_to=/" target="_top">Sign out</a>}
+          <Button onClick={close}>Save preferences</Button>
+        </footer>
       </section>
     </div>
   );
@@ -911,12 +1084,14 @@ function HomeDashboard({
   completedSessions,
   rows,
   start,
+  openPractice,
 }: {
   today: Try[];
   history: Try[];
   completedSessions: number;
   rows: { t: Topic; score: number; tries: Try[] }[];
   start: (m: Mode) => void;
+  openPractice: () => void;
 }) {
   const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
@@ -968,6 +1143,31 @@ function HomeDashboard({
         </div>
       </section>
 
+      <section className="dashboard-launchpad" aria-label="Training control center">
+        <div className="launchpad-heading">
+          <span><small>TRAINING CONTROL CENTER</small><h2>Choose your next move</h2></span>
+          <button onClick={openPractice}>See all practice modes <ChevronRight /></button>
+        </div>
+        <div className="training-categories">
+          <article className="category-recall">
+            <header><BookOpen /><span><b>Build recall</b><small>Core facts and adaptive review</small></span></header>
+            <div><button onClick={() => start('learn')}>Learn</button><button onClick={() => start('mixed')}>Mixed</button></div>
+          </article>
+          <article className="category-target">
+            <header><Target /><span><b>Target weaknesses</b><small>Attack slow or missed facts</small></span></header>
+            <div><button onClick={() => start('weak')}>Weak areas</button><button onClick={openPractice}>Focus drill</button></div>
+          </article>
+          <article className="category-test">
+            <header><Check /><span><b>Test readiness</b><small>Bank-exam recall checkpoints</small></span></header>
+            <div><button onClick={() => start('test10')}>10Q</button><button onClick={() => start('test25')}>25Q</button><button onClick={() => start('test50')}>50Q</button></div>
+          </article>
+          <article className="category-speed">
+            <header><Zap /><span><b>Build speed</b><small>Sustained pace and variety</small></span></header>
+            <div><button onClick={() => start('sprint')}>1-min sprint</button><button onClick={() => start('random')}>Random</button></div>
+          </article>
+        </div>
+      </section>
+
       {!!history.length && (
         <section className="recent-signal" aria-label="Recent performance summary">
           <span><small>RECENT FORM</small><b>{accuracy(recent)}% accuracy</b><em>{recent.filter((item) => !item.skipped).length} scored answers</em></span>
@@ -1006,14 +1206,24 @@ function PracticeHub({
   setGroup: (g: string) => void;
 }) {
   const groups = [...new Set(FACTS.filter((f) => f.topic === topic).map((f) => f.group))];
+  const modeGroups: { label: string; title: string; modes: Mode[] }[] = [
+    { label: 'BUILD RECALL', title: 'Learn and reinforce', modes: ['learn', 'mixed', 'random'] },
+    { label: 'TARGETED TRAINING', title: 'Attack weak facts', modes: ['focus', 'weak'] },
+    { label: 'EXAM CHECKPOINTS', title: 'Measure accuracy and stamina', modes: ['test10', 'test25', 'test50'] },
+    { label: 'SPEED WORK', title: 'Train sustained pace', modes: ['sprint'] },
+  ];
   useEffect(() => { if (!groups.includes(group)) setGroup(groups[0]); }, [topic]);
   return (
     <div className="page practice-hub">
       <div className="masteryTitle"><span><small>PRACTICE</small><h1>Choose your training session</h1><p>Start with the recommended mix or target one specific recall skill.</p></span></div>
-      <section className="panel session-panel" id="practice-modes">
-        <Heading over="ALL PRACTICE MODES" title="Train with purpose" />
-        <div className="modes">{MODES.map(([id, title, copy, I]) => <button key={id} className={id === 'mixed' ? 'featured' : ''} onClick={() => start(id)}><i><I /></i><span><b>{title}</b><small>{copy}</small></span><Play className="start-icon" fill="currentColor" /></button>)}</div>
-      </section>
+      <div className="practice-categories" id="practice-modes">
+        {modeGroups.map((category) => (
+          <section className="panel session-panel" key={category.label}>
+            <Heading over={category.label} title={category.title} />
+            <div className="modes">{MODES.filter(([id]) => category.modes.includes(id)).map(([id, title, copy, I]) => <button key={id} className={id === 'mixed' ? 'featured' : ''} onClick={() => start(id)}><i><I /></i><span><b>{title}</b><small>{copy}</small></span><Play className="start-icon" fill="currentColor" /></button>)}</div>
+          </section>
+        ))}
+      </div>
       <section className="panel focus-hub">
         <Heading over="FOCUSED PRACTICE" title="Drill a specific group" />
         <div className="focus"><select value={topic} onChange={(e) => setTopic(e.target.value as Topic)}>{(Object.keys(TOPICS) as Topic[]).map((t) => <option key={t} value={t}>{TOPICS[t].name}</option>)}</select><select value={group} onChange={(e) => setGroup(e.target.value)}>{groups.map((g) => <option key={g}>{g}</option>)}</select><Button onClick={() => start('focus')}>Start drill <ChevronRight /></Button></div>
