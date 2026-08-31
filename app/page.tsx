@@ -641,7 +641,9 @@ export default function Home() {
           weak={() => start('weak')}
         />
       )}{' '}
-      {view === 'mastery' && <Mastery stats={stats} history={history} />}
+      {view === 'mastery' && (
+        <Mastery stats={stats} history={history} start={start} />
+      )}
     </main>
   );
 }
@@ -1381,7 +1383,124 @@ function Summary({
     </div>
   );
 }
-function Mastery({ stats, history }: { stats: Record<string, Stat>; history: Try[] }) {
+function ProgressImpact({
+  stats,
+  history,
+  start,
+}: {
+  stats: Record<string, Stat>;
+  history: Try[];
+  start: (mode: Mode) => void;
+}) {
+  const sampleSize = Math.min(20, Math.floor(history.length / 2)),
+    hasComparison = sampleSize >= 5,
+    baseline = hasComparison ? history.slice(0, sampleSize) : [],
+    current = hasComparison ? history.slice(-sampleSize) : [],
+    accuracyGain = hasComparison ? accuracy(current) - accuracy(baseline) : 0,
+    paceGain = hasComparison ? (average(baseline) - average(current)) / 1000 : 0,
+    timeSaved = Math.max(0, paceGain * 50),
+    masteredFacts = FACTS.filter(
+      (fact) => level(stats[fact.id], TOPICS[fact.topic].target) === 'Mastered',
+    ).length,
+    instantFacts = FACTS.filter((fact) => {
+      const s = stats[fact.id];
+      return s && s.attempts >= 3 && s.correct / s.attempts >= 0.85 && s.total / s.attempts <= 2500;
+    }).length,
+    topicOutcomes = (Object.keys(TOPICS) as Topic[])
+      .map((topic) => {
+        const tries = history.filter((item) => item.topic === topic);
+        return {
+          topic,
+          tries,
+          mastered: FACTS.filter(
+            (fact) =>
+              fact.topic === topic &&
+              level(stats[fact.id], TOPICS[topic].target) === 'Mastered',
+          ).length,
+        };
+      })
+      .filter((row) => row.tries.length);
+
+  return (
+    <section className="panel impact-report" aria-label="RecallLab impact report">
+      <div className="impact-report-head">
+        <span>
+          <small>MEASURABLE OUTCOMES</small>
+          <h2>Your RecallLab impact</h2>
+          <p>See how repeated recall is changing your accuracy, pace, and exam readiness.</p>
+        </span>
+        <em>{hasComparison ? `Comparing ${sampleSize} early vs recent answers` : 'Benchmark in progress'}</em>
+      </div>
+
+      {!history.length ? (
+        <div className="impact-empty">
+          <i><BarChart3 /></i>
+          <span>
+            <b>Create your first measurable benchmark</b>
+            <small>A one-minute diagnostic records the baseline that every future session will be compared against.</small>
+          </span>
+          <Button onClick={() => start('sprint')}><Zap /> Start diagnostic</Button>
+        </div>
+      ) : (
+        <>
+          <div className="impact-kpis">
+            <span>
+              <small>ACCURACY CHANGE</small>
+              <b>{hasComparison ? `${accuracyGain >= 0 ? '+' : ''}${accuracyGain} pts` : `${accuracy(history)}%`}</b>
+              <em>{hasComparison ? `${accuracy(baseline)}% → ${accuracy(current)}%` : 'Current accuracy baseline'}</em>
+            </span>
+            <span>
+              <small>RECALL SPEED</small>
+              <b>{hasComparison ? `${Math.abs(paceGain).toFixed(1)}s ${paceGain >= 0 ? 'faster' : 'slower'}` : `${(average(history) / 1000).toFixed(1)}s`}</b>
+              <em>{hasComparison ? `${(average(baseline) / 1000).toFixed(1)}s → ${(average(current) / 1000).toFixed(1)}s` : 'Average time per answer'}</em>
+            </span>
+            <span>
+              <small>INSTANT RECALL</small>
+              <b>{instantFacts} facts</b>
+              <em>≥85% accurate in 2.5s or less</em>
+            </span>
+            <span>
+              <small>MASTERED BANK</small>
+              <b>{masteredFacts} / {FACTS.length}</b>
+              <em>Consistently accurate and on pace</em>
+            </span>
+          </div>
+
+          <div className="impact-proof">
+            <BarChart3 />
+            <span>
+              <small>PROJECTED EXAM IMPACT</small>
+              <b>{hasComparison && paceGain > 0 ? `${timeSaved.toFixed(0)} seconds saved per 50 recall operations` : 'Keep training to establish a reliable pace gain'}</b>
+              <p>{hasComparison && paceGain > 0 ? 'Projection uses your measured early-to-recent response-time improvement; it is not an exam-score prediction.' : 'A comparison unlocks after five early and five recent answers.'}</p>
+            </span>
+          </div>
+
+          {!!topicOutcomes.length && (
+            <div className="topic-outcomes" aria-label="Topic outcome breakdown">
+              {topicOutcomes.map((row) => (
+                <div key={row.topic}>
+                  <span><b>{TOPICS[row.topic].short}</b><small>{row.tries.length} attempts</small></span>
+                  <span><b>{accuracy(row.tries)}%</b><small>{(average(row.tries) / 1000).toFixed(1)}s avg</small></span>
+                  <span><b>{row.mastered}</b><small>mastered</small></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Mastery({
+  stats,
+  history,
+  start,
+}: {
+  stats: Record<string, Stat>;
+  history: Try[];
+  start: (mode: Mode) => void;
+}) {
   const [topic, setTopic] = useState<Topic>('fractions');
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -1402,6 +1521,7 @@ function Mastery({ stats, history }: { stats: Record<string, Stat>; history: Try
           </p>
         </span>
       </div>
+      <ProgressImpact stats={stats} history={history} start={start} />
       <section className="panel progress-rhythm" aria-label="Seven-day practice rhythm">
         <Heading over="PRACTICE RHYTHM" title="Last seven days" />
         <div className="progress-rhythm-grid">
@@ -1460,6 +1580,15 @@ function Mastery({ stats, history }: { stats: Record<string, Stat>; history: Try
           })}
         </div>
       </section>
+      <details className="panel methodology">
+        <summary>How RecallLab measures mastery</summary>
+        <div>
+          <span><b>Accuracy first</b><small>A fact cannot become Mastered from one correct answer. RecallLab requires repeated, consistent success.</small></span>
+          <span><b>Speed with control</b><small>Each topic has an exam-relevant pace target. Faster answers help only when accuracy remains strong.</small></span>
+          <span><b>Adaptive review</b><small>Weak, slow, and overdue facts return more often; strong facts remain in occasional review.</small></span>
+          <span><b>Exact exam values</b><small>Terminating percentages stay exact and recurring banking-exam values use their memorized decimal form without rounding up.</small></span>
+        </div>
+      </details>
     </div>
   );
 }
