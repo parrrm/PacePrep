@@ -589,6 +589,7 @@ export default function Home() {
       {view === 'summary' && (
         <Summary
           tries={session}
+          prior={history.slice(0, Math.max(0, history.length - session.length))}
           sprint={mode === 'sprint'}
           home={() => setView('dashboard')}
           weak={() => start('weak')}
@@ -625,13 +626,21 @@ function Header({
           className={view === 'dashboard' ? 'active' : ''}
           onClick={() => setView('dashboard')}
         >
-          Dashboard
+          Home
+        </button>
+        <button
+          onClick={() => {
+            setView('dashboard');
+            setTimeout(() => document.getElementById('practice-modes')?.scrollIntoView({ behavior: 'smooth' }), 0);
+          }}
+        >
+          Practice
         </button>
         <button
           className={view === 'mastery' ? 'active' : ''}
           onClick={() => setView('mastery')}
         >
-          Mastery grid
+          Progress
         </button>
       </nav>
       <div>
@@ -680,7 +689,14 @@ function Dashboard({
         tries: history.filter((x) => day(x.at) === day(d.getTime())),
       };
     }),
-    streak = new Set(history.map((x) => day(x.at))).size;
+    streak = new Set(history.map((x) => day(x.at))).size,
+    compareSize = Math.min(20, Math.floor(history.length / 2)),
+    baseline = compareSize ? history.slice(0, compareSize) : [],
+    recent = compareSize ? history.slice(-compareSize) : [],
+    paceGain = baseline.length
+      ? Math.max(0, (average(baseline) - average(recent)) / 1000)
+      : 0,
+    accuracyGain = baseline.length ? accuracy(recent) - accuracy(baseline) : 0;
   return (
     <div className="page">
       <section className="welcome">
@@ -723,6 +739,44 @@ function Dashboard({
           tone={streak ? 'fire active' : 'fire empty'}
         />
       </section>
+      <section
+        className="student-command"
+        aria-label="Recommended training and progress"
+      >
+        <div className="recommended-workout">
+          <div className="workout-copy">
+            <span className="command-icon"><Target /></span>
+            <div>
+              <small>{history.length ? 'RECOMMENDED · 8 MINUTES' : 'START HERE · 1 MINUTE'}</small>
+              <h2>{history.length ? "Today's adaptive workout" : 'Establish your baseline'}</h2>
+              <p>{history.length ? '12 weak facts · 8 scheduled reviews · 5 mixed calculations' : 'A short diagnostic will reveal your strongest and slowest fact families.'}</p>
+              <em>{history.length ? `Recommended because ${TOPICS[rows[0].t].short.toLowerCase()} currently needs the most attention.` : 'Your first result becomes the benchmark for every future improvement.'}</em>
+            </div>
+          </div>
+          <Button onClick={() => start(history.length ? 'mixed' : 'sprint')}>
+            <Play fill="currentColor" /> {history.length ? 'Begin workout' : 'Start diagnostic'}
+          </Button>
+        </div>
+        <div className="impact-card">
+          <span className="impact-icon"><BarChart3 /></span>
+          <div>
+            <small>YOUR RECALLLAB IMPACT</small>
+            <h2>{baseline.length ? 'You are measurably improving' : 'Your progress proof starts here'}</h2>
+          </div>
+          {baseline.length ? (
+            <>
+              <div className="impact-comparison">
+                <span><small>BASELINE</small><b>{(average(baseline) / 1000).toFixed(2)}s</b><em>{accuracy(baseline)}% accurate</em></span>
+                <i>→</i>
+                <span><small>CURRENT</small><b>{(average(recent) / 1000).toFixed(2)}s</b><em>{accuracy(recent)}% accurate</em></span>
+              </div>
+              <p><b>{paceGain.toFixed(2)}s faster</b> · {accuracyGain >= 0 ? '+' : ''}{accuracyGain} accuracy points across comparable recent questions.</p>
+            </>
+          ) : (
+            <p>Complete the diagnostic to unlock baseline-versus-current comparisons, weekly gains, and fact-level improvement.</p>
+          )}
+        </div>
+      </section>
       <div className="columns">
         <div className="maincol">
           <section className="panel progress">
@@ -751,7 +805,7 @@ function Dashboard({
               ))}
             </div>
           </section>
-          <section className="panel session-panel">
+          <section className="panel session-panel" id="practice-modes">
             <Heading over="PRACTICE MODES" title="Choose your session" />
             <div className="modes">
               {MODES.map(([id, title, copy, I]) => (
@@ -1044,11 +1098,13 @@ function Practice({
 }
 function Summary({
   tries,
+  prior,
   sprint,
   home,
   weak,
 }: {
   tries: Try[];
+  prior: Try[];
   sprint: boolean;
   home: () => void;
   weak: () => void;
@@ -1056,6 +1112,7 @@ function Summary({
   const wrong = tries.filter((x) => !x.correct),
     review = [...new Map(wrong.map((x) => [x.id, x])).values()].slice(0, 4),
     fast = tries.length ? Math.min(...tries.map((x) => x.ms)) : 0,
+    previousComparable = prior.slice(-Math.max(tries.length, 10)),
     topics = (Object.keys(TOPICS) as Topic[])
       .map((t) => ({ t, x: tries.filter((a) => a.topic === t) }))
       .filter((x) => x.x.length)
@@ -1086,6 +1143,31 @@ function Summary({
             <small>FASTEST</small>
             <b>{fast ? (fast / 1000).toFixed(2) : '—'}s</b>
           </span>
+        </div>
+        <div className="session-impact" aria-label="Session improvement comparison">
+          <BarChart3 />
+          <div>
+            <small>WHAT CHANGED</small>
+            {previousComparable.length ? (
+              <>
+                <b>
+                  {average(tries) <= average(previousComparable)
+                    ? `${((average(previousComparable) - average(tries)) / 1000).toFixed(2)}s faster`
+                    : 'Accuracy-building session'}
+                </b>
+                <p>
+                  Previous: {accuracy(previousComparable)}% at{' '}
+                  {(average(previousComparable) / 1000).toFixed(2)}s · Now:{' '}
+                  {accuracy(tries)}% at {(average(tries) / 1000).toFixed(2)}s
+                </p>
+              </>
+            ) : (
+              <>
+                <b>Baseline recorded</b>
+                <p>Your next comparable session will show exactly how much accuracy and recall speed changed.</p>
+              </>
+            )}
+          </div>
         </div>
         <div className="sumdetail">
           <div>
