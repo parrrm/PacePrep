@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360" viewBox="0 0 520 360">
+  <g fill="#17324d" fill-opacity=".12" font-family="Arial, sans-serif" font-weight="700">
+    <text x="22" y="42" font-size="18" transform="rotate(-7 22 42)">7/16</text>
+    <text x="182" y="34" font-size="14" transform="rotate(5 182 34)">43.75%</text>
+    <text x="374" y="54" font-size="17" transform="rotate(-4 374 54)">17 × 8</text>
+    <text x="80" y="120" font-size="15" transform="rotate(6 80 120)">27²</text>
+    <text x="268" y="106" font-size="20" transform="rotate(-8 268 106)">13³</text>
+    <text x="454" y="142" font-size="13" transform="rotate(8 454 142)">1 5/8</text>
+    <text x="28" y="214" font-size="14" transform="rotate(-5 28 214)">136 ÷ 17</text>
+    <text x="208" y="198" font-size="17" transform="rotate(7 208 198)">33.33%</text>
+    <text x="382" y="232" font-size="15" transform="rotate(-6 382 232)">19 × 20</text>
+    <text x="112" y="306" font-size="19" transform="rotate(4 112 306)">5/8</text>
+    <text x="292" y="322" font-size="14" transform="rotate(-7 292 322)">√729</text>
+    <text x="468" y="300" font-size="18" transform="rotate(5 468 300)">87.5%</text>
+  </g>
+</svg>
