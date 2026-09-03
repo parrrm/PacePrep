@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "lint": "oxlint app db components/ui/button.tsx lib/utils.ts",
     "lint:all": "oxlint",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "format": "oxfmt"
   },
   "dependencies": {

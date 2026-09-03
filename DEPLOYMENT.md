@@ -12,6 +12,7 @@ Use Node.js 22.13 or newer and pnpm, then run:
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
+pnpm test
 pnpm build
 ```
 
@@ -40,6 +41,47 @@ and verified:
 - the operator's legal name and address/state for Terms and Privacy;
 - approved permanent pricing and free-tier commitments;
 - production performance validation for LCP, CLS, and INP.
+
+## Installable app (PWA)
+
+PacePrep is a browser-installed web app, not an APK or App Store binary. The
+manifest, Android/maskable icons, Apple touch icon, install entry points, and
+Safari installation instructions are included. It reuses this deployment and
+requires no separate native-app hosting service. Existing hosting and domain
+costs still apply; this does not assert that production hosting is free.
+
+The service worker caches **only** the public reconnect screen and icon. It
+never caches account/API/auth responses. A currently loaded drill can continue
+through a network interruption, but reopening the full trainer offline is not
+yet supported. Cloud sync retries on reconnection. Updates are applied only
+after an explicit reload confirmation, so an update cannot interrupt a drill.
+
+Installable apps are bound to their origin. Move to the owned domain before a
+wide installation campaign; students would need to reinstall after an origin
+change. Guest history does not automatically transfer between origins or
+between all browser/installed-app storage contexts. Signed-in sync is the
+recommended migration route.
+
+## Phased scope from the September brief
+
+This iteration targets V1 usability plus the requested PWA foundation. It does
+not claim V2/V3 completion or a guaranteed exam outcome. Recall Age, Hindi,
+Fact → Paper/DI transfer, exam-pressure mode, exam-specific blueprints, cohort
+percentiles, and advanced shortcut adoption analytics remain later-phase work.
+The previously misleading “Velocity 10” category tile has been corrected to an
+actual 10-question benchmark; a persistent 10-day commitment program and
+server-verifiable certificates need their own implementation and validation.
+
+For browser smoke checks, install Playwright and Chromium in a development
+environment, run the production server, then run:
+
+```bash
+PACEPREP_TEST_URL=http://localhost:8787 node --experimental-strip-types tests/browser-smoke.mjs
+```
+
+The homepage diagnostic does not persist answers until the learner chooses to
+save and affirms 18+ eligibility. Saved diagnostic attempts merge into the
+same fact-level history, with de-duplication on subsequent loads.
 
 The existing Sites deployment is retained instead of a parallel Vercel setup
 because authentication, the D1 binding, and the deployment project are already

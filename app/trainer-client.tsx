@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BookOpen,
@@ -22,7 +22,20 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { SiteLink as Link } from './site-link';
+import {
+  answersMatch,
+  decimalSlip,
+  questionsPerMinute,
+} from '@/lib/recall-math';
+import { InstallButton } from './pwa-provider';
+import { type BaselineAttempt } from '@/lib/baseline';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 type Topic = 'fractions' | 'tables' | 'squares' | 'cubes' | 'consecutive';
 type PracticeCategory = 'fractions' | 'tables' | 'powers' | 'percentages';
@@ -67,6 +80,8 @@ type Try = {
   raw?: string;
   ms: number;
   at: number;
+  sessionId?: string;
+  answerMode?: 'mcq' | 'typed';
 };
 type AuthUser = {
   userId: string;
@@ -376,8 +391,7 @@ const level = (s?: Stat, target = 2200): Level => {
   if (s.attempts >= 4 && ac >= 0.8 && av <= target * 1.45) return 'Strong';
   return ac >= 0.55 ? 'Learning' : 'Weak';
 };
-const norm = (v: string) => v.trim().replace(/%|\s/g, '').toLowerCase(),
-  day = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA'),
+const day = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA'),
   accuracy = (a: Try[]) => {
     const scored = a.filter((x) => !x.skipped);
     return scored.length
@@ -393,60 +407,6 @@ const norm = (v: string) => v.trim().replace(/%|\s/g, '').toLowerCase(),
       : 0;
   };
 
-type Rational = { numerator: number; denominator: number };
-function gcdInteger(a: number, b: number) {
-  let x = Math.abs(a);
-  let y = Math.abs(b);
-  while (y) [x, y] = [y, x % y];
-  return x || 1;
-}
-function parseRational(raw: string, expectedPercent = false): Rational | null {
-  let value = raw.trim().replace(/,/g, '');
-  if (!value) return null;
-  const hasPercent = value.endsWith('%');
-  if (hasPercent) value = value.slice(0, -1).trim();
-  const mixed = value.match(/^(-?\d+)\s+(\d+)\/(\d+)$/);
-  const fraction = value.match(/^(-?\d+)\/(\d+)$/);
-  let numerator: number;
-  let denominator: number;
-  if (mixed) {
-    const whole = Number(mixed[1]);
-    denominator = Number(mixed[3]);
-    if (!denominator) return null;
-    const part = Number(mixed[2]);
-    numerator =
-      whole < 0 ? whole * denominator - part : whole * denominator + part;
-  } else if (fraction) {
-    numerator = Number(fraction[1]);
-    denominator = Number(fraction[2]);
-    if (!denominator) return null;
-  } else if (/^-?\d+(?:\.\d+)?$/.test(value)) {
-    const [whole, decimals = ''] = value.split('.');
-    denominator = 10 ** decimals.length;
-    const sign = whole.startsWith('-') ? -1 : 1;
-    numerator = Number(whole) * denominator + sign * Number(decimals || '0');
-  } else {
-    return null;
-  }
-  if (hasPercent || expectedPercent) denominator *= 100;
-  const divisor = gcdInteger(numerator, denominator);
-  return { numerator: numerator / divisor, denominator: denominator / divisor };
-}
-function answersMatch(raw: string, expected: string) {
-  if (norm(raw) === norm(expected)) return true;
-  const expectedPercent = expected.trim().endsWith('%');
-  const typed = parseRational(
-    raw,
-    expectedPercent && !raw.trim().endsWith('%'),
-  );
-  const target = parseRational(expected);
-  return (
-    !!typed &&
-    !!target &&
-    typed.numerator === target.numerator &&
-    typed.denominator === target.denominator
-  );
-}
 function answerHint(fact: Fact) {
   if (fact.a.includes(' ') && fact.a.includes('/'))
     return 'Enter a mixed number or an equivalent improper fraction (for example, 3 1/2 or 7/2).';
@@ -827,8 +787,18 @@ export default function Home() {
     [authStatus, setAuthStatus] = useState<AuthStatus>('guest'),
     [authUser, setAuthUser] = useState<AuthUser | null>(null),
     [cloudReady, setCloudReady] = useState(false),
-    [cloudStatus, setCloudStatus] = useState<CloudStatus>('idle');
+    [cloudStatus, setCloudStatus] = useState<CloudStatus>('idle'),
+    [syncTick, setSyncTick] = useState(0),
+    [localSaveError, setLocalSaveError] = useState(false),
+    [elapsedMs, setElapsedMs] = useState(0);
   const started = useRef(0),
+    sessionStarted = useRef(0),
+    sessionKey = useRef(''),
+    answerLocked = useRef(false),
+    advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
+    advanceAction = useRef<(() => void) | null>(null),
+    cloudSave = useRef<Promise<void> | null>(null),
+    deletingProgress = useRef(false),
     localSnapshot = useRef<SavedProgress>({}),
     sessionCounted = useRef(false),
     sessionAttempts = useRef(0),
@@ -844,6 +814,34 @@ export default function Home() {
           localStorage.getItem(LEGACY_STORAGE_KEY) ??
           '{}';
         const s = JSON.parse(raw) as SavedProgress;
+        const pending = JSON.parse(
+          sessionStorage.getItem('paceprep-pending-baseline') || '[]',
+        ) as BaselineAttempt[];
+        if (Array.isArray(pending) && pending.length) {
+          const baselineId = `baseline-${pending[0].at}`;
+          const known = new Set((s.history || []).map(tryKey));
+          const fresh = pending.filter(
+            (item) =>
+              FACTS.some((fact) => fact.id === item.id) &&
+              !known.has(tryKey(item)),
+          );
+          s.stats = { ...s.stats };
+          fresh.forEach((item) => {
+            s.stats![item.id] = updateStat(
+              s.stats![item.id],
+              item.correct && !item.skipped,
+              item.ms,
+              item.at,
+            );
+          });
+          s.history = [
+            ...(s.history || []),
+            ...fresh.map((item) => ({ ...item, sessionId: baselineId })),
+          ];
+          if (fresh.some((item) => !item.skipped))
+            s.completedSessions = (s.completedSessions || 0) + 1;
+          sessionStorage.removeItem('paceprep-pending-baseline');
+        }
         localSnapshot.current = s;
         setStats(s.stats || {});
         setHistory(s.history || []);
@@ -857,18 +855,28 @@ export default function Home() {
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
-    if (ready)
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          stats,
-          history: history.slice(-1500),
-          completedSessions,
-          dark,
-          input,
-        }),
-      );
+    if (ready) {
+      const snapshot = {
+        stats,
+        history: history.slice(-1500),
+        completedSessions,
+        dark,
+        input,
+      };
+      localSnapshot.current = snapshot;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+        queueMicrotask(() => setLocalSaveError(false));
+      } catch {
+        queueMicrotask(() => setLocalSaveError(true));
+      }
+    }
   }, [stats, history, completedSessions, dark, input, ready]);
+  useEffect(() => {
+    const reconnect = () => setSyncTick((value) => value + 1);
+    window.addEventListener('online', reconnect);
+    return () => window.removeEventListener('online', reconnect);
+  }, []);
   useEffect(() => {
     if (!ready) return;
     let active = true;
@@ -901,12 +909,19 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [ready]);
+  }, [ready, syncTick]);
   useEffect(() => {
-    if (!ready || !cloudReady || authStatus !== 'signed-in') return;
+    if (
+      !ready ||
+      !cloudReady ||
+      authStatus !== 'signed-in' ||
+      (!history.length && !Object.keys(stats).length)
+    )
+      return;
     const id = window.setTimeout(() => {
+      if (deletingProgress.current) return;
       setCloudStatus('saving');
-      fetch('/api/progress', {
+      cloudSave.current = fetch('/api/progress', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -933,7 +948,28 @@ export default function Home() {
     ready,
     cloudReady,
     authStatus,
+    syncTick,
   ]);
+  useEffect(
+    () => () => {
+      if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    },
+    [],
+  );
+  function resetSessionTiming() {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    advanceAction.current = null;
+    answerLocked.current = false;
+    sessionStarted.current = performance.now();
+    sessionKey.current = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setElapsedMs(0);
+  }
+  function advanceNow() {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    const action = advanceAction.current;
+    advanceAction.current = null;
+    action?.();
+  }
   function sessionDeck(sessionMode: Mode, source: Fact[]) {
     const ordered = createDeck(sessionMode, source, stats);
     if (!sessionTargets.current.size) return ordered;
@@ -948,6 +984,7 @@ export default function Home() {
     ];
   }
   function showFact(nextFact: Fact) {
+    answerLocked.current = false;
     setFact(nextFact);
     setOpts(choices(nextFact));
     setAnswer('');
@@ -975,6 +1012,7 @@ export default function Home() {
     if (nextFact) showFact(nextFact);
   }
   function start(m: Mode) {
+    resetSessionTiming();
     const resolvedMode =
         m === 'weak' &&
         !FACTS.some((candidate) => stats[candidate.id]?.attempts)
@@ -1016,6 +1054,7 @@ export default function Home() {
     direction: 'direct' | 'reverse' | 'all',
     sessionMode: Mode = 'focus',
   ) {
+    resetSessionTiming();
     const nextPool = FACTS.filter((candidate) => {
       if (category === 'tables')
         return (
@@ -1050,6 +1089,7 @@ export default function Home() {
     if (first) setTimeout(() => showFact(first), 0);
   }
   function retryFacts(ids: string[]) {
+    resetSessionTiming();
     const unique = [...new Set(ids)],
       nextPool = modePool('weak', stats, topic, group, unique);
     sessionTargets.current = new Set(unique);
@@ -1076,14 +1116,23 @@ export default function Home() {
   async function deleteProgress() {
     if (
       !window.confirm(
-        'Permanently delete your cloud progress and reset this device?',
+        authUser
+          ? 'Permanently delete your cloud progress and reset this device?'
+          : 'Delete all PacePrep progress saved on this device?',
       )
     )
       return;
-    const response = await fetch('/api/progress', { method: 'DELETE' });
-    if (!response.ok) {
-      setCloudStatus('error');
-      return;
+    if (authUser) {
+      deletingProgress.current = true;
+      try {
+        await cloudSave.current;
+        const response = await fetch('/api/progress', { method: 'DELETE' });
+        if (!response.ok) throw new Error('Delete failed');
+      } catch {
+        deletingProgress.current = false;
+        setCloudStatus('error');
+        return;
+      }
     }
     setStats({});
     setHistory([]);
@@ -1093,9 +1142,28 @@ export default function Home() {
     localStorage.removeItem(LEGACY_STORAGE_KEY);
     setProfileOpen(false);
     setView('dashboard');
+    deletingProgress.current = false;
   }
+  const finishSession = useCallback(() => {
+    answerLocked.current = true;
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    advanceAction.current = null;
+    const elapsed = Math.max(0, performance.now() - sessionStarted.current);
+    setElapsedMs(mode === 'sprint' ? Math.min(60_000, elapsed) : elapsed);
+    if (!sessionCounted.current && sessionAttempts.current) {
+      sessionCounted.current = true;
+      setCompletedSessions((count) => count + 1);
+    }
+    setView('summary');
+  }, [mode]);
   function skip() {
-    if (result) return;
+    if (result || answerLocked.current) return;
+    if (
+      mode === 'sprint' &&
+      performance.now() - sessionStarted.current >= 60_000
+    )
+      return finishSession();
+    answerLocked.current = true;
     const t: Try = {
       id: fact.id,
       topic: fact.topic,
@@ -1106,6 +1174,8 @@ export default function Home() {
       raw: '',
       ms: Math.max(100, performance.now() - started.current),
       at: Date.now(),
+      sessionId: sessionKey.current,
+      answerMode: input,
     };
     const nextSkippedIds = skippedIds.includes(fact.id)
       ? skippedIds
@@ -1122,13 +1192,6 @@ export default function Home() {
     sessionAttempts.current++;
     next(fact.id, nextSkippedIds);
   }
-  function finishSession() {
-    if (!sessionCounted.current && sessionAttempts.current) {
-      sessionCounted.current = true;
-      setCompletedSessions((count) => count + 1);
-    }
-    setView('summary');
-  }
   const limit =
     mode === 'test10'
       ? 10
@@ -1138,7 +1201,13 @@ export default function Home() {
           ? 50
           : 0;
   function submit(raw: string) {
-    if (result) return;
+    if (result || answerLocked.current || !raw.trim()) return;
+    if (
+      mode === 'sprint' &&
+      performance.now() - sessionStarted.current >= 60_000
+    )
+      return finishSession();
+    answerLocked.current = true;
     const ms = Math.max(100, performance.now() - started.current),
       ok = answersMatch(raw, fact.a),
       t: Try = {
@@ -1150,6 +1219,8 @@ export default function Home() {
         raw,
         ms,
         at: Date.now(),
+        sessionId: sessionKey.current,
+        answerMode: input,
       },
       answeredAt = Date.now();
     setStats((s) => ({
@@ -1163,37 +1234,44 @@ export default function Home() {
       answeredCount = session.filter((item) => !item.skipped).length + 1;
     setSkippedIds(remainingSkipped);
     setResult({ ok, ms, raw });
-    setTimeout(
-      () => {
-        if (limit && answeredCount >= limit) {
-          const revisit = FACTS.find(
-            (candidate) => candidate.id === remainingSkipped[0],
-          );
-          return revisit ? showFact(revisit) : finishSession();
-        }
-        next(fact.id, remainingSkipped);
-      },
-      mode === 'sprint' ? 180 : ok ? 650 : 1150,
+    advanceAction.current = () => {
+      if (limit && answeredCount >= limit) {
+        const revisit = FACTS.find(
+          (candidate) => candidate.id === remainingSkipped[0],
+        );
+        return revisit ? showFact(revisit) : finishSession();
+      }
+      next(fact.id, remainingSkipped);
+    };
+    advanceTimer.current = setTimeout(
+      advanceNow,
+      mode === 'sprint' ? 450 : ok ? 800 : 3200,
     );
   }
   useEffect(() => {
     if (view !== 'practice' || mode !== 'sprint') return;
-    const id = setInterval(
-      () =>
-        setLeft((x) => {
-          if (x <= 1) {
-            clearInterval(id);
-            setTimeout(finishSession, 0);
-            return 0;
-          }
-          return x - 1;
-        }),
-      1000,
-    );
+    const id = setInterval(() => {
+      const remaining = Math.max(
+        0,
+        Math.ceil(
+          (60_000 - (performance.now() - sessionStarted.current)) / 1000,
+        ),
+      );
+      setLeft(remaining);
+      if (!remaining) {
+        clearInterval(id);
+        finishSession();
+      }
+    }, 200);
     return () => clearInterval(id);
-  }, [view, mode]);
+  }, [view, mode, finishSession]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (view === 'practice' && result && e.key === 'Enter') {
+        e.preventDefault();
+        advanceNow();
+        return;
+      }
       if (
         view === 'practice' &&
         !result &&
@@ -1237,9 +1315,6 @@ export default function Home() {
     mastered = FACTS.filter(
       (f) => level(stats[f.id], TOPICS[f.topic].target) === 'Mastered',
     ).length;
-  if (authStatus === 'checking' || authStatus === 'anonymous') {
-    return <LandingPage onGuest={() => setAuthStatus('guest')} />;
-  }
   return (
     <main>
       {view !== 'practice' && view !== 'summary' && <MathAtmosphere />}
@@ -1252,6 +1327,12 @@ export default function Home() {
         onProfile={() => setProfileOpen(true)}
         attempts={history.length}
       />
+      {localSaveError && (
+        <p className="storage-warning" role="alert">
+          This browser could not save progress. Keep this tab open and allow
+          site storage before continuing.
+        </p>
+      )}
       {profileOpen && (
         <ProfilePanel
           dark={dark}
@@ -1307,6 +1388,10 @@ export default function Home() {
           skippedCount={skippedIds.length}
           reviewSkipped={reviewSkipped}
           field={field}
+          continueNext={advanceNow}
+          correctCount={
+            session.filter((item) => item.correct && !item.skipped).length
+          }
         />
       )}{' '}
       {view === 'summary' && (
@@ -1314,6 +1399,7 @@ export default function Home() {
           tries={session}
           prior={history.slice(0, Math.max(0, history.length - session.length))}
           sprint={mode === 'sprint'}
+          elapsedMs={elapsedMs}
           home={() => setView('dashboard')}
           weak={() => start('weak')}
           retry={retryFacts}
@@ -1322,232 +1408,6 @@ export default function Home() {
       {view === 'mastery' && (
         <Mastery stats={stats} history={history} start={start} />
       )}
-    </main>
-  );
-}
-
-function LandingPage({ onGuest }: { onGuest: () => void }) {
-  const [eligible, setEligible] = useState(false);
-  return (
-    <main className="landing-shell">
-      <MathAtmosphere />
-      <header className="landing-nav">
-        <span className="brand" aria-label="PacePrep home">
-          <b>
-            <Zap size={16} />
-          </b>
-          Pace<span>Prep</span>
-        </span>
-        <div>
-          <button onClick={onGuest} disabled={!eligible}>
-            Try a drill
-          </button>
-          {eligible ? (
-            <Link href="/signin-with-chatgpt?return_to=/" target="_top">
-              Sign in
-            </Link>
-          ) : (
-            <button disabled>Sign in</button>
-          )}
-        </div>
-      </header>
-      <section className="landing-hero">
-        <div className="landing-copy">
-          <small>MENTAL MATH TRAINING FOR COMPETITIVE EXAMS</small>
-          <h1>Turn calculation into instant recall.</h1>
-          <p>
-            Train the exact fractions, tables, squares, cubes, and mental
-            patterns that decide speed in SBI PO and IBPS PO quantitative
-            aptitude.
-          </p>
-          <p className="landing-scope">
-            PacePrep is a foundational arithmetic recall engine—not a complete
-            quantitative-aptitude syllabus or a substitute for full mock tests.
-          </p>
-          <div className="landing-actions">
-            <button onClick={onGuest} disabled={!eligible}>
-              Start a guest drill <ChevronRight />
-            </button>
-            {eligible ? (
-              <Link href="/signin-with-chatgpt?return_to=/" target="_top">
-                <User /> Sign in to sync progress
-              </Link>
-            ) : (
-              <button disabled>
-                <User /> Sign in to sync progress
-              </button>
-            )}
-          </div>
-          <label className="age-confirm">
-            <input
-              type="checkbox"
-              checked={eligible}
-              onChange={(event) => setEligible(event.target.checked)}
-            />
-            <span>
-              I confirm I am 18+ and agree to the{' '}
-              <Link href="/terms">Terms</Link> and{' '}
-              <Link href="/privacy">Privacy Policy</Link>.
-            </span>
-          </label>
-          <small className="landing-price">
-            Free testing preview · no card required · no paid features today
-          </small>
-          <div className="landing-trust">
-            <span>
-              <Check /> No password handled by PacePrep
-            </span>
-            <span>
-              <Check /> Guest practice stays on this device
-            </span>
-            <span>
-              <Check /> Guest work merges when you later sign in
-            </span>
-          </div>
-        </div>
-        <aside
-          className="landing-preview"
-          aria-label="PacePrep training preview"
-        >
-          <small>EXAMPLE PROGRESS VIEW</small>
-          <div className="preview-question">
-            <b>7/16</b>
-            <span>→</span>
-            <strong>43.75%</strong>
-          </div>
-          <p>Accuracy first. Then faster recall, measured answer by answer.</p>
-          <div className="preview-metrics">
-            <span>
-              <small>ACCURACY</small>
-              <b>91%</b>
-            </span>
-            <span>
-              <small>AVG. TIME</small>
-              <b>2.4s</b>
-            </span>
-            <span>
-              <small>IMPROVEMENT</small>
-              <b>−1.1s</b>
-            </span>
-          </div>
-          <em>
-            Illustrative example. Your dashboard uses only your recorded
-            practice results.
-          </em>
-        </aside>
-      </section>
-      <section className="landing-paths" aria-label="Training paths">
-        <article>
-          <BookOpen />
-          <span>
-            <b>Build recall</b>
-            <small>Learn core facts with direct and reverse practice.</small>
-          </span>
-        </article>
-        <article>
-          <Target />
-          <span>
-            <b>Attack weak areas</b>
-            <small>
-              Spaced repetition prioritizes slow or inaccurate facts.
-            </small>
-          </span>
-        </article>
-        <article>
-          <Clock3 />
-          <span>
-            <b>Build exam pace</b>
-            <small>
-              Use Velocity 10 to compare your baseline with day ten.
-            </small>
-          </span>
-        </article>
-      </section>
-      <section
-        className="landing-testimonials"
-        aria-labelledby="learner-stories"
-      >
-        <header>
-          <small>LEARNER STORIES</small>
-          <h2 id="learner-stories">Results students can feel in a mock test</h2>
-          <p>
-            Individual outcomes vary; these learners describe their own
-            experience.
-          </p>
-        </header>
-        <div>
-          <figure>
-            <blockquote>
-              “I used to spend 8–10 seconds converting fractions to percentages
-              during DI sets. After three weeks of daily reverse-recall drills,
-              that&apos;s under 2 seconds—and it showed up directly in my mock
-              test scores.”
-            </blockquote>
-            <figcaption>Ananya R. · SBI PO aspirant</figcaption>
-          </figure>
-          <figure>
-            <blockquote>
-              “The Velocity 10 challenge is what finally got me past the
-              sectional cutoff in quant. I could see my day-1 baseline versus
-              day-10 side by side.”
-            </blockquote>
-            <figcaption>Rohit S. · IBPS PO 2026 candidate</figcaption>
-          </figure>
-          <figure>
-            <blockquote>
-              “Three months later, tables and squares are automatic; I
-              don&apos;t even think about them anymore.”
-            </blockquote>
-            <figcaption>Priya M. · IBPS Clerk aspirant</figcaption>
-          </figure>
-        </div>
-      </section>
-      <section className="landing-faq" aria-labelledby="faq-title">
-        <header>
-          <small>QUICK ANSWERS</small>
-          <h2 id="faq-title">How PacePrep fits exam preparation</h2>
-        </header>
-        <details>
-          <summary>
-            How does spaced repetition help in DI and approximation?
-          </summary>
-          <p>
-            It reduces the time spent reconstructing common facts, leaving more
-            working memory for the actual set, comparison, and decision.
-          </p>
-        </details>
-        <details>
-          <summary>Why train fractions in both directions?</summary>
-          <p>
-            Banking questions require both recognition and reconstruction. Pair
-            Recall tracks 7/16 → 43.75% separately from 43.75% → 7/16.
-          </p>
-        </details>
-        <details>
-          <summary>What happens to guest practice after sign-in?</summary>
-          <p>
-            Your device history is merged with your signed-in progress. Matching
-            answers are de-duplicated, so the same attempt is not counted twice.
-          </p>
-        </details>
-      </section>
-      <footer className="landing-footer">
-        <nav aria-label="Footer navigation">
-          <Link href="/about">About</Link>
-          <Link href="/pricing">Pricing</Link>
-          <Link href="/faq">FAQ</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/contact">Contact</Link>
-        </nav>
-        <span>
-          Guest mode is device-local · signed-in mode syncs learning progress
-        </span>
-        <small>
-          For adults aged 18+. By continuing, you agree to the Terms and Privacy
-          Policy.
-        </small>
-      </footer>
     </main>
   );
 }
@@ -1663,25 +1523,23 @@ function ProfilePanel({
   deleteProgress: () => void;
   close: () => void;
 }) {
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-    addEventListener('keydown', handleEscape);
-    return () => removeEventListener('keydown', handleEscape);
-  }, [close]);
   return (
-    <div className="profile-backdrop" role="presentation">
-      <dialog
-        open
-        className="profile-panel"
-        aria-modal="true"
-        aria-labelledby="profile-title"
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+    >
+      <DialogContent
+        className="profile-panel accessible-profile"
+        showCloseButton={false}
       >
         <header>
           <span>
             <small>LEARNER PROFILE</small>
-            <h2 id="profile-title">{user?.displayName || 'Guest learner'}</h2>
+            <DialogTitle id="profile-title">
+              {user?.displayName || 'Guest learner'}
+            </DialogTitle>
           </span>
           <button
             className="icon"
@@ -1691,6 +1549,10 @@ function ProfilePanel({
             <X />
           </button>
         </header>
+        <DialogDescription className="sr-only">
+          Manage your progress, display preferences, and PacePrep app
+          installation.
+        </DialogDescription>
         <div className="profile-level">
           <i>
             <User />
@@ -1710,7 +1572,7 @@ function ProfilePanel({
               ? 'Saving progress…'
               : cloudStatus === 'error'
                 ? 'Cloud sync needs attention.'
-                : 'Progress synced securely across signed-in devices.'}
+                : 'Progress synced across signed-in devices over HTTPS.'}
             <small>{user.email}</small>
           </p>
         ) : (
@@ -1722,6 +1584,13 @@ function ProfilePanel({
             to keep it across devices.
           </p>
         )}
+        <div className="preference-row">
+          <span>
+            <b>PacePrep on your phone</b>
+            <small>Add a home-screen shortcut for daily practice.</small>
+          </span>
+          <InstallButton />
+        </div>
         <div className="preference-row">
           <span>
             <b>Default answer mode</b>
@@ -1753,11 +1622,9 @@ function ProfilePanel({
           </button>
         </div>
         <footer>
-          {user && (
-            <button className="delete-progress" onClick={deleteProgress}>
-              Delete progress
-            </button>
-          )}
+          <button className="delete-progress" onClick={deleteProgress}>
+            Delete progress
+          </button>
           {user && (
             <Link
               className="sign-out"
@@ -1769,8 +1636,8 @@ function ProfilePanel({
           )}
           <Button onClick={close}>Save preferences</Button>
         </footer>
-      </dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 function HomeDashboard({
@@ -1811,7 +1678,10 @@ function HomeDashboard({
         ? level(stats[item.id], TOPICS[item.topic].target)
         : 'Weak';
       return (
-        sum + { Weak: 12, Learning: 42, Strong: 72, Mastered: 100 }[status]
+        sum +
+        (stats[item.id]?.attempts
+          ? { Weak: 12, Learning: 42, Strong: 72, Mastered: 100 }[status]
+          : 0)
       );
     }, 0);
     return Math.round(score / facts.length);
@@ -1848,7 +1718,11 @@ function HomeDashboard({
     categories.reduce((sum, row) => sum + row.score, 0) / categories.length,
   );
   const weakest = rows
-    .filter((row) => row.tries.some((item) => !item.skipped))
+    .filter(
+      (row) =>
+        row.tries.some((item) => !item.skipped) &&
+        (accuracy(row.tries) < 85 || average(row.tries) > 8000),
+    )
     .sort((a, b) => {
       const aAccuracy = accuracy(a.tries);
       const bAccuracy = accuracy(b.tries);
@@ -2044,7 +1918,9 @@ function HomeDashboard({
             <h2>
               {weakest
                 ? TOPICS[weakest.t].short
-                : 'Find your first target area'}
+                : history.length
+                  ? 'Your practised topics are on track'
+                  : 'Find your first target area'}
             </h2>
             <p>
               {weakest
@@ -2054,12 +1930,29 @@ function HomeDashboard({
                   ' point gap to the stable threshold · ' +
                   (average(weakest.tries) / 1000).toFixed(1) +
                   's average'
-                : 'A short diagnostic identifies the fact family that will return the most time.'}
+                : history.length
+                  ? 'No topic is below 85% accuracy or above 8 seconds on average. Keep reviewing to make that performance durable.'
+                  : 'A short diagnostic identifies the fact family that will return the most time.'}
             </p>
           </span>
         </div>
-        <Button onClick={() => (weakest ? start('weak') : start('sprint'))}>
-          <Target /> {weakest ? 'Practice now' : 'Start diagnostic'}
+        <Button
+          onClick={() =>
+            weakest
+              ? retry(
+                  FACTS.filter((fact) => fact.topic === weakest.t).map(
+                    (fact) => fact.id,
+                  ),
+                )
+              : start(history.length ? 'mixed' : 'sprint')
+          }
+        >
+          <Target />{' '}
+          {weakest
+            ? 'Drill weaknesses'
+            : history.length
+              ? 'Continue review'
+              : 'Start diagnostic'}
         </Button>
       </section>
     </div>
@@ -2094,7 +1987,8 @@ function PracticeHub({
         ? fact.topic === 'tables'
         : key === 'powers'
           ? fact.topic === 'squares' || fact.topic === 'cubes'
-          : fact.topic === 'fractions',
+          : fact.topic === 'fractions' &&
+            (key === 'fractions' ? !!fact.reverse : !fact.reverse),
     );
   const categoryScore = (key: PracticeCategory) => {
     const facts = categoryFacts(key);
@@ -2106,7 +2000,7 @@ function PracticeHub({
         return (
           sum + { Weak: 12, Learning: 42, Strong: 72, Mastered: 100 }[status]
         );
-      }, 0) / practised.length,
+      }, 0) / facts.length,
     );
   };
   const categoryMeta: Record<
@@ -2201,14 +2095,14 @@ function PracticeHub({
             </span>
             <ChevronRight />
           </button>
-          <button onClick={() => startCategory(selected, 'all', 'mixed')}>
+          <button onClick={() => startCategory(selected, 'all', 'test10')}>
             <i className={meta.color}>
               <Target />
             </i>
             <span>
-              <small>VELOCITY 10</small>
-              <b>Challenge set</b>
-              <em>Build a day-one baseline and compare it with day ten.</em>
+              <small>MEASURE RECALL</small>
+              <b>10-question benchmark</b>
+              <em>A fixed-length check with an immediate results review.</em>
             </span>
             <ChevronRight />
           </button>
@@ -2307,7 +2201,7 @@ function PracticeHub({
           </i>
           <span>
             <small>CROSS-CATEGORY TRAINING</small>
-            <h2>Velocity 10 & mixed review</h2>
+            <h2>Mixed review & timed practice</h2>
             <p>
               Let the scheduler combine due, weak, reverse, and strong-review
               facts.
@@ -2360,6 +2254,31 @@ function Heading({
     </div>
   );
 }
+function AnimatedCount({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  const previous = useRef(value);
+  useEffect(() => {
+    const reduced = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    const from = previous.current;
+    const start = performance.now();
+    let frame = 0;
+    function tick(now: number) {
+      const portion = reduced ? 1 : Math.min(1, (now - start) / 250);
+      setDisplay(Math.round(from + (value - from) * portion));
+      if (portion < 1) frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+    previous.current = value;
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return (
+    <span aria-label={String(value)}>
+      <span aria-hidden="true">{display}</span>
+    </span>
+  );
+}
 function Practice({
   fact,
   opts,
@@ -2377,6 +2296,8 @@ function Practice({
   skippedCount,
   reviewSkipped,
   field,
+  continueNext,
+  correctCount,
 }: {
   fact: Fact;
   opts: string[];
@@ -2394,6 +2315,8 @@ function Practice({
   skippedCount: number;
   reviewSkipped: () => void;
   field: React.RefObject<HTMLInputElement | null>;
+  continueNext: () => void;
+  correctCount: number;
 }) {
   const [confirmEnd, setConfirmEnd] = useState(false);
   return (
@@ -2406,13 +2329,18 @@ function Practice({
           Pace<span>Prep</span>
         </button>
         <span>
-          Question {current}
+          Question {result ? current - 1 : current}
           {limit ? ` of ${limit}` : ''}
         </span>
         <div>
-          {left !== null && <b>0:{String(left).padStart(2, '0')}</b>}
+          {left !== null && (
+            <b>
+              {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+            </b>
+          )}
           <Button
             variant="outline"
+            aria-label="End session"
             onClick={() => (skippedCount ? setConfirmEnd(true) : end())}
           >
             End session
@@ -2422,6 +2350,9 @@ function Practice({
       <section className="quiz">
         <div className="quizline">
           <small>{TOPICS[fact.topic].name}</small>
+          <b className="session-score">
+            <Check size={15} /> <AnimatedCount value={correctCount} /> correct
+          </b>
           <span>
             <button
               className={input === 'mcq' ? 'active' : ''}
@@ -2437,7 +2368,9 @@ function Practice({
             </button>
           </span>
         </div>
-        <div className="qcard">
+        <div
+          className={`qcard ${result ? (result.ok ? 'answer-correct' : 'answer-review-needed') : ''}`}
+        >
           <small>{fact.reverse ? 'REVERSE RECALL' : 'DIRECT RECALL'}</small>
           <h1>
             <MathText value={fact.q} />
@@ -2483,8 +2416,12 @@ function Practice({
                 aria-label="Your answer"
                 inputMode={fact.a.includes('/') ? 'text' : 'decimal'}
                 autoComplete="off"
+                disabled={!!result}
+                maxLength={80}
               />
-              <Button type="submit">Check answer</Button>
+              <Button type="submit" disabled={!!result || !answer.trim()}>
+                Check answer
+              </Button>
               {fact.a.includes('/') && (
                 <div className="fraction-keypad" aria-label="Fraction keypad">
                   {[
@@ -2503,6 +2440,7 @@ function Practice({
                   ].map((key) => (
                     <button
                       type="button"
+                      disabled={!!result}
                       key={key}
                       onClick={() =>
                         setAnswer(answer + (key === 'space' ? ' ' : key))
@@ -2513,6 +2451,7 @@ function Practice({
                   ))}
                   <button
                     type="button"
+                    disabled={!!result}
                     onClick={() => setAnswer(answer.slice(0, -1))}
                   >
                     ⌫
@@ -2524,27 +2463,42 @@ function Practice({
           <p className="answer-format-hint">
             <b>Answer format:</b> {answerHint(fact)}
           </p>
-          <div
+          <output
             className={`feedback ${result ? (result.ok ? 'yes' : 'no') : ''}`}
             aria-live="polite"
           >
             {result && (
               <>
-                <i>{result.ok ? <Check /> : <X />}</i>
+                <i>{result.ok ? <Check /> : <RotateCcw />}</i>
                 <span>
                   <b>
-                    {result.ok ? 'Correct' : 'Not quite'} —{' '}
-                    {(result.ms / 1000).toFixed(2)} sec
+                    {result.ok
+                      ? 'Correct. Keep the pace.'
+                      : 'A fact to lock in.'}{' '}
+                    — {(result.ms / 1000).toFixed(2)} sec
                   </b>
                   {!result.ok && (
                     <small>
                       Correct answer: <MathText value={fact.a} />
                     </small>
                   )}
+                  {!result.ok && (
+                    <p>
+                      {decimalSlip(result.raw, fact.a)
+                        ? 'Possible decimal-place slip: check where the decimal belongs.'
+                        : 'Compare the prompt and answer as one pair. You’ll review the explanation after this session.'}
+                    </p>
+                  )}
                 </span>
+                <button
+                  onClick={continueNext}
+                  aria-label="Continue to next question"
+                >
+                  Continue <ChevronRight />
+                </button>
               </>
             )}
-          </div>
+          </output>
           {!result && (
             <div className="quiz-actions">
               <button onClick={skip}>
@@ -2560,26 +2514,21 @@ function Practice({
         </div>
         <p>
           <Keyboard /> Press <kbd>1</kbd>–<kbd>4</kbd> to answer · <kbd>S</kbd>{' '}
-          to skip · accuracy before speed
+          to skip · Enter to continue · accuracy before speed
         </p>
       </section>
       {confirmEnd && (
-        <div className="end-backdrop" role="presentation">
-          <dialog
-            open
-            className="end-confirm"
-            aria-modal="true"
-            aria-labelledby="end-title"
-          >
+        <Dialog open onOpenChange={setConfirmEnd}>
+          <DialogContent className="end-confirm">
             <small>UNFINISHED REVIEW</small>
-            <h2 id="end-title">
+            <DialogTitle id="end-title">
               {skippedCount} skipped{' '}
               {skippedCount === 1 ? 'question' : 'questions'} remain
-            </h2>
-            <p>
+            </DialogTitle>
+            <DialogDescription>
               Reviewing them now keeps difficult facts from disappearing from
               this session.
-            </p>
+            </DialogDescription>
             <div>
               <Button variant="outline" onClick={end}>
                 End anyway
@@ -2593,8 +2542,8 @@ function Practice({
                 Review skipped
               </Button>
             </div>
-          </dialog>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -2648,6 +2597,7 @@ function Summary({
   tries,
   prior,
   sprint,
+  elapsedMs,
   home,
   weak,
   retry,
@@ -2655,6 +2605,7 @@ function Summary({
   tries: Try[];
   prior: Try[];
   sprint: boolean;
+  elapsedMs: number;
   home: () => void;
   weak: () => void;
   retry: (ids: string[]) => void;
@@ -2662,7 +2613,9 @@ function Summary({
   const [reviewFilter, setReviewFilter] = useState<
     'all' | 'incorrect' | 'skipped'
   >('all');
-  const reviewItems = [...new Map(tries.map((x) => [x.id, x])).values()],
+  const [detailed, setDetailed] = useState(false);
+  const [shareStatus, setShareStatus] = useState('');
+  const reviewItems = tries,
     wrong = reviewItems.filter((x) => !x.correct && !x.skipped),
     skipped = reviewItems.filter((x) => x.skipped),
     visibleReview = reviewItems.filter(
@@ -2674,7 +2627,19 @@ function Summary({
     ),
     scored = tries.filter((item) => !item.skipped),
     fast = scored.length ? Math.min(...scored.map((x) => x.ms)) : 0,
-    previousComparable = prior.slice(-Math.max(tries.length, 10)),
+    matched = scored
+      .map((item) => ({
+        now: item,
+        before: prior.findLast(
+          (previous) =>
+            previous.id === item.id &&
+            previous.answerMode === item.answerMode &&
+            !previous.skipped,
+        ),
+      }))
+      .filter((pair) => !!pair.before),
+    previousComparable = matched.map((pair) => pair.before!),
+    currentComparable = matched.map((pair) => pair.now),
     topics = (Object.keys(TOPICS) as Topic[])
       .map((t) => ({ t, x: tries.filter((a) => a.topic === t) }))
       .filter((x) => x.x.length)
@@ -2683,16 +2648,26 @@ function Summary({
   async function shareReport() {
     const text = [
       'PacePrep Recall Report',
-      `${tries.length} questions · ${accuracy(tries)}% accuracy · ${(average(tries) / 1000).toFixed(1)}s average`,
+      `${scored.length} answered · ${accuracy(tries)}% accuracy · ${(average(tries) / 1000).toFixed(1)}s average`,
       previousComparable.length
-        ? `Previous comparison: ${accuracy(previousComparable)}% at ${(average(previousComparable) / 1000).toFixed(1)}s`
+        ? `${matched.length} matched-fact comparisons: before ${accuracy(previousComparable)}% at ${(average(previousComparable) / 1000).toFixed(1)}s; now ${accuracy(currentComparable)}% at ${(average(currentComparable) / 1000).toFixed(1)}s`
         : 'Baseline session recorded',
       `Recorded ${new Date().toLocaleString('en-IN')}`,
       'Generated from recorded fact-level practice. Individual results vary.',
     ].join('\n');
-    if (navigator.share)
-      await navigator.share({ title: 'PacePrep Recall Report', text });
-    else await navigator.clipboard.writeText(text);
+    try {
+      if (navigator.share)
+        await navigator.share({ title: 'PacePrep Recall Report', text });
+      else {
+        await navigator.clipboard.writeText(text);
+        setShareStatus('Report copied. Paste it into your study group.');
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError'))
+        setShareStatus(
+          'Sharing is unavailable in this browser. Your results remain saved here.',
+        );
+    }
   }
   return (
     <div className="summary">
@@ -2701,24 +2676,32 @@ function Summary({
           <Check />
         </i>
         <small>SESSION COMPLETE</small>
-        <h1>Good work. Keep sharpening.</h1>
+        <h1>
+          {!scored.length
+            ? 'No scored answers yet.'
+            : accuracy(tries) >= 90
+              ? 'Accurate today. Automatic with practice.'
+              : 'A clear next step, not just a score.'}
+        </h1>
         <p>Each accurate repetition moves a fact closer to instant recall.</p>
         <div className="sumstats">
           <span>
-            <small>QUESTIONS</small>
-            <b>{tries.length}</b>
+            <small>ANSWERED</small>
+            <b>{scored.length}</b>
           </span>
           <span>
             <small>ACCURACY</small>
-            <b>{accuracy(tries)}%</b>
+            <b>{scored.length ? accuracy(tries) + '%' : '—'}</b>
           </span>
           <span>
             <small>AVG. RESPONSE</small>
-            <b>{tries.length ? (average(tries) / 1000).toFixed(1) : '—'}s</b>
+            <b>
+              {scored.length ? (average(tries) / 1000).toFixed(1) + 's' : '—'}
+            </b>
           </span>
           <span>
             <small>FASTEST</small>
-            <b>{fast ? (fast / 1000).toFixed(2) : '—'}s</b>
+            <b>{fast ? (fast / 1000).toFixed(2) + 's' : '—'}</b>
           </span>
         </div>
         <div
@@ -2731,19 +2714,26 @@ function Summary({
             {previousComparable.length ? (
               <>
                 <b>
-                  {average(tries) <= average(previousComparable)
-                    ? `${((average(previousComparable) - average(tries)) / 1000).toFixed(1)}s faster`
-                    : 'Accuracy-building session'}
+                  {average(currentComparable) <= average(previousComparable)
+                    ? `${((average(previousComparable) - average(currentComparable)) / 1000).toFixed(1)}s faster on matching facts`
+                    : `${((average(currentComparable) - average(previousComparable)) / 1000).toFixed(1)}s slower on matching facts`}
                 </b>
                 <p>
                   Previous: {accuracy(previousComparable)}% at{' '}
                   {(average(previousComparable) / 1000).toFixed(1)}s · Now:{' '}
-                  {accuracy(tries)}% at {(average(tries) / 1000).toFixed(1)}s
+                  {accuracy(currentComparable)}% at{' '}
+                  {(average(currentComparable) / 1000).toFixed(1)}s{' · '}
+                  {matched.length} matched attempts in the same answer mode, not
+                  an exam-score prediction.
                 </p>
               </>
             ) : (
               <>
-                <b>Baseline recorded</b>
+                <b>
+                  {scored.length
+                    ? 'Baseline recorded'
+                    : 'Start when you’re ready'}
+                </b>
                 <p>
                   Your next comparable session will show exactly how much
                   accuracy and recall speed changed.
@@ -2752,165 +2742,240 @@ function Summary({
             )}
           </div>
         </div>
-        <div className="sumdetail">
-          <div>
-            <small>WEAKEST TOPIC</small>
-            <b>{topics[0] ? TOPICS[topics[0].t].name : 'No weak topic yet'}</b>
-            <em>
-              {topics[0]
-                ? `${accuracy(topics[0].x)}% in this session`
-                : 'Complete a few questions'}
-            </em>
-          </div>
-          <div>
-            <small>REVIEW STATUS</small>
-            <b>
-              {wrong.length} incorrect · {skipped.length} skipped
-            </b>
-            <em>
-              {wrong.length || skipped.length
-                ? 'Review the explanations below, then retry the facts.'
-                : 'No errors — excellent control.'}
-            </em>
-          </div>
+        <div className="summary-takeaway">
+          <b>
+            {scored.filter((item) => item.correct).length} correct ·{' '}
+            {scored.filter((item) => !item.correct).length} incorrect ·{' '}
+            {skipped.length} skipped
+          </b>
+          <p>
+            {wrong.length || skipped.length
+              ? 'Your missed facts are ready for a targeted retry. Open the analysis when you want explanations.'
+              : scored.length
+                ? 'No missed answers in this session. Review later to check retention, not just recognition.'
+                : 'Nothing has been scored. Return to the dashboard to choose a drill.'}
+          </p>
         </div>
-        {confusion && (
-          <div className="confusion-callout">
-            <RotateCcw />
-            <span>
-              <small>CONFUSION PAIR DETECTED</small>
+        <button
+          className="analysis-toggle"
+          aria-expanded={detailed}
+          aria-controls="session-analysis"
+          onClick={() => setDetailed(!detailed)}
+        >
+          <BarChart3 />
+          {detailed ? 'Hide detailed analysis' : 'View detailed analysis'}
+          <ChevronRight />
+        </button>
+        <div id="session-analysis" hidden={!detailed}>
+          <div className="topic-analysis">
+            <h2>Category breakdown</h2>
+            <table>
+              <caption className="sr-only">
+                Accuracy and response time by topic in this session
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Topic</th>
+                  <th scope="col">Accuracy</th>
+                  <th scope="col">Average</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topics.map(({ t, x }) => (
+                  <tr key={t}>
+                    <th scope="row">{TOPICS[t].short}</th>
+                    <td>
+                      {x.some((a) => !a.skipped)
+                        ? accuracy(x) + '%'
+                        : 'Skipped'}
+                    </td>
+                    <td>
+                      {x.some((a) => !a.skipped)
+                        ? (average(x) / 1000).toFixed(1) + 's'
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="sumdetail">
+            <div>
+              <small>WEAKEST TOPIC</small>
               <b>
-                <MathText
-                  value={
-                    FACTS.find((item) => item.id === confusion.ids[0])?.q || ''
-                  }
-                />
-                {' ↔ '}
-                <MathText
-                  value={
-                    FACTS.find((item) => item.id === confusion.ids[1])?.q || ''
-                  }
-                />
+                {topics[0] ? TOPICS[topics[0].t].name : 'No weak topic yet'}
               </b>
-              <p>
-                PacePrep found {confusion.count} answer pattern suggesting these
-                facts are being mixed up.
-              </p>
-            </span>
-            <Button variant="outline" onClick={() => retry(confusion.ids)}>
-              Drill this pair
-            </Button>
+              <em>
+                {topics[0]
+                  ? `${accuracy(topics[0].x)}% in this session`
+                  : 'Complete a few questions'}
+              </em>
+            </div>
+            <div>
+              <small>REVIEW STATUS</small>
+              <b>
+                {wrong.length} incorrect · {skipped.length} skipped
+              </b>
+              <em>
+                {wrong.length || skipped.length
+                  ? 'Review the explanations below, then retry the facts.'
+                  : 'No errors — excellent control.'}
+              </em>
+            </div>
           </div>
-        )}
-        <section className="answer-review" aria-label="Question review">
-          <header>
-            <span>
-              <small>ANSWER REVIEW</small>
-              <h2>Understand every attempt</h2>
-            </span>
-            <nav aria-label="Review filters">
-              <button
-                className={reviewFilter === 'all' ? 'active' : ''}
-                onClick={() => setReviewFilter('all')}
-              >
-                All {reviewItems.length}
-              </button>
-              <button
-                className={reviewFilter === 'incorrect' ? 'active' : ''}
-                onClick={() => setReviewFilter('incorrect')}
-              >
-                Incorrect {wrong.length}
-              </button>
-              <button
-                className={reviewFilter === 'skipped' ? 'active' : ''}
-                onClick={() => setReviewFilter('skipped')}
-              >
-                Skipped {skipped.length}
-              </button>
-            </nav>
-          </header>
-          <div className="review-list">
-            {visibleReview.length ? (
-              visibleReview.map((item) => {
-                const strategy = strategyFor(item);
-                return (
-                  <article
-                    key={item.id}
-                    className={
-                      item.skipped
-                        ? 'skipped'
-                        : item.correct
-                          ? 'correct'
-                          : 'incorrect'
+          {confusion && (
+            <div className="confusion-callout">
+              <RotateCcw />
+              <span>
+                <small>CONFUSION PAIR DETECTED</small>
+                <b>
+                  <MathText
+                    value={
+                      FACTS.find((item) => item.id === confusion.ids[0])?.q ||
+                      ''
                     }
-                  >
-                    <div className="review-question">
-                      <span>
-                        <small>
-                          {item.skipped
-                            ? 'SKIPPED'
-                            : item.correct
-                              ? 'CORRECT'
-                              : 'INCORRECT'}
-                        </small>
-                        <b>
-                          <MathText value={item.q} />
-                        </b>
-                      </span>
-                      <em>
-                        {item.skipped ? '—' : `${(item.ms / 1000).toFixed(2)}s`}
-                      </em>
-                    </div>
-                    <div className="review-answer">
-                      <span>
-                        <small>YOUR ANSWER</small>
-                        <b>
-                          {item.skipped
-                            ? 'Not answered'
-                            : item.raw || 'Not recorded'}
-                        </b>
-                      </span>
-                      <span>
-                        <small>CORRECT ANSWER</small>
-                        <b>
-                          <MathText value={item.a} />
-                        </b>
-                      </span>
-                    </div>
-                    <div className="review-strategy">
-                      <Brain />
-                      <span>
-                        <b>{strategy.title}</b>
-                        <p>{strategy.text}</p>
-                      </span>
-                    </div>
-                    {!item.correct && (
-                      <button onClick={() => retry([item.id])}>
-                        Retry this fact <ChevronRight />
-                      </button>
-                    )}
-                  </article>
-                );
-              })
-            ) : (
-              <p className="review-empty">No questions match this filter.</p>
-            )}
-          </div>
-          {!!(wrong.length || skipped.length) && (
-            <Button
-              onClick={() =>
-                retry([...wrong, ...skipped].map((item) => item.id))
-              }
-            >
-              <RotateCcw /> Retry missed questions
-            </Button>
+                  />
+                  {' ↔ '}
+                  <MathText
+                    value={
+                      FACTS.find((item) => item.id === confusion.ids[1])?.q ||
+                      ''
+                    }
+                  />
+                </b>
+                <p>
+                  PacePrep found {confusion.count} answer pattern suggesting
+                  these facts are being mixed up.
+                </p>
+              </span>
+              <Button variant="outline" onClick={() => retry(confusion.ids)}>
+                Drill this pair
+              </Button>
+            </div>
           )}
-        </section>
+          <section className="answer-review" aria-label="Question review">
+            <header>
+              <span>
+                <small>ANSWER REVIEW</small>
+                <h2>Understand every attempt</h2>
+              </span>
+              <nav aria-label="Review filters">
+                <button
+                  className={reviewFilter === 'all' ? 'active' : ''}
+                  onClick={() => setReviewFilter('all')}
+                >
+                  All {reviewItems.length}
+                </button>
+                <button
+                  className={reviewFilter === 'incorrect' ? 'active' : ''}
+                  onClick={() => setReviewFilter('incorrect')}
+                >
+                  Incorrect {wrong.length}
+                </button>
+                <button
+                  className={reviewFilter === 'skipped' ? 'active' : ''}
+                  onClick={() => setReviewFilter('skipped')}
+                >
+                  Skipped {skipped.length}
+                </button>
+              </nav>
+            </header>
+            <div className="review-list">
+              {visibleReview.length ? (
+                visibleReview.map((item) => {
+                  const strategy = strategyFor(item);
+                  return (
+                    <article
+                      key={item.id + '-' + item.at}
+                      className={
+                        item.skipped
+                          ? 'skipped'
+                          : item.correct
+                            ? 'correct'
+                            : 'incorrect'
+                      }
+                    >
+                      <div className="review-question">
+                        <span>
+                          <small>
+                            {item.skipped
+                              ? 'SKIPPED'
+                              : item.correct
+                                ? 'CORRECT'
+                                : 'INCORRECT'}
+                          </small>
+                          <b>
+                            <MathText value={item.q} />
+                          </b>
+                        </span>
+                        <em>
+                          {item.skipped
+                            ? '—'
+                            : `${(item.ms / 1000).toFixed(2)}s`}
+                        </em>
+                      </div>
+                      <div className="review-answer">
+                        <span>
+                          <small>YOUR ANSWER</small>
+                          <b>
+                            {item.skipped
+                              ? 'Not answered'
+                              : item.raw || 'Not recorded'}
+                          </b>
+                        </span>
+                        <span>
+                          <small>CORRECT ANSWER</small>
+                          <b>
+                            <MathText value={item.a} />
+                          </b>
+                        </span>
+                      </div>
+                      <div className="review-strategy">
+                        <Brain />
+                        <span>
+                          <b>{strategy.title}</b>
+                          {!item.correct &&
+                            !item.skipped &&
+                            decimalSlip(item.raw || '', item.a) && (
+                              <p>
+                                <strong>Possible decimal-place slip.</strong>{' '}
+                                Check the decimal position before using the
+                                recall strategy.
+                              </p>
+                            )}
+                          <p>{strategy.text}</p>
+                        </span>
+                      </div>
+                      {!item.correct && (
+                        <button onClick={() => retry([item.id])}>
+                          Retry this fact <ChevronRight />
+                        </button>
+                      )}
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="review-empty">No questions match this filter.</p>
+              )}
+            </div>
+            {!!(wrong.length || skipped.length) && (
+              <Button
+                onClick={() =>
+                  retry([...wrong, ...skipped].map((item) => item.id))
+                }
+              >
+                <RotateCcw /> Retry missed questions
+              </Button>
+            )}
+          </section>
+        </div>
         {sprint && (
           <div className="sprint">
             <Zap />
             <b>
-              {tries.length} attempted · {tries.length} questions per minute
+              {scored.length} answered in {(elapsedMs / 1000).toFixed(1)}s ·{' '}
+              {questionsPerMinute(scored.length, elapsedMs).toFixed(1)}{' '}
+              questions/min
             </b>
           </div>
         )}
@@ -2918,13 +2983,18 @@ function Summary({
           <Button variant="outline" onClick={home}>
             Back to dashboard
           </Button>
-          <Button variant="outline" onClick={shareReport}>
+          <Button
+            variant="outline"
+            onClick={shareReport}
+            disabled={!scored.length}
+          >
             <Share2 /> Share recall report
           </Button>
           <Button onClick={weak}>
             <RotateCcw /> Practice weak areas
           </Button>
         </footer>
+        {shareStatus && <output className="share-status">{shareStatus}</output>}
       </section>
     </div>
   );

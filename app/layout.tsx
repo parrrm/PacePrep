@@ -1,6 +1,8 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import './mobile-launch.css';
+import { PwaProvider } from './pwa-provider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -31,6 +33,9 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: '/' },
   robots: { index: true, follow: true },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'PacePrep', statusBarStyle: 'default' },
+  icons: { icon: '/icons/app.svg', apple: '/icons/apple-touch-icon.png' },
   openGraph: {
     title: 'PacePrep — Mental Math Recall Training for Banking Exams',
     description:
@@ -38,12 +43,21 @@ export const metadata: Metadata = {
     url: '/',
     siteName: 'PacePrep',
     type: 'website',
+    images: [
+      {
+        url: '/paceprep-social.png',
+        width: 1200,
+        height: 630,
+        alt: 'PacePrep — Turn calculation into instant recall.',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'PacePrep — Mental Math Recall Training for Banking Exams',
     description:
       'Adaptive recall practice for faster, more accurate banking-exam calculations.',
+    images: ['/paceprep-social.png'],
   },
 };
 
@@ -56,6 +70,13 @@ const structuredData = {
   description:
     'Adaptive mental math recall training for SBI PO and IBPS PO quantitative aptitude.',
   audience: { '@type': 'Audience', suggestedMinAge: 18 },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#142d4e',
 };
 
 export default function RootLayout({
@@ -72,7 +93,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-        {children}
+        <PwaProvider>{children}</PwaProvider>
       </body>
     </html>
   );

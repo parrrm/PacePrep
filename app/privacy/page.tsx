@@ -18,11 +18,21 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section>
+        <h2>Try-before-saving diagnostic</h2>
+        <p>
+          The homepage baseline keeps answers in the current page’s memory. It
+          does not send answers to our server or save them to browser storage
+          until you choose to save and confirm you are 18+. Closing or
+          refreshing the unsaved page discards that sample.
+        </p>
+      </section>
+      <section>
         <h2>Guest mode</h2>
         <p>
           Practice answers, response times, settings, and mastery records stay
           in your browser&apos;s local storage. Clearing site data removes them
-          from that device.
+          from that device. You can also use Profile → Delete progress without
+          signing in.
         </p>
       </section>
       <section>
@@ -52,6 +62,16 @@ export default function PrivacyPage() {
           application&apos;s Cloudflare D1 database and transmitted over HTTPS.
           We do not claim a specific storage region or additional encryption
           property until it is contractually verified.
+        </p>
+      </section>
+      <section>
+        <h2>Installed web app</h2>
+        <p>
+          The installable app uses the same website and data controls. Its
+          service worker caches only a public reconnect page and app icon, not
+          your account or practice API responses. Full offline reopening of the
+          trainer is not available yet. Browser and installed-app storage can
+          differ by device.
         </p>
       </section>
       <section>

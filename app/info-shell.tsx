@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Zap } from 'lucide-react';
-import Link from 'next/link';
+import { SiteLink as Link } from './site-link';
 
 export function InfoShell({
   eyebrow,
@@ -34,6 +34,7 @@ export function InfoShell({
         <Link href="/about">About</Link>
         <Link href="/pricing">Pricing</Link>
         <Link href="/faq">FAQ</Link>
+        <Link href="/install">Install app</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         <Link href="/contact">Contact</Link>

@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
+import { SiteLink as Link } from './site-link';
+import BaselineDiagnostic from './baseline-diagnostic';
+import { type BaselineAttempt } from '@/lib/baseline';
+import { InstallButton } from './pwa-provider';
 import {
   BookOpen,
   Check,
   ChevronRight,
   Clock3,
   Target,
-  User,
   Zap,
 } from 'lucide-react';
 
@@ -28,10 +30,14 @@ const Trainer = dynamic(() => import('./trainer-client'), {
     </main>
   ),
 });
+const EntryDialog = dynamic(() => import('./entry-dialog'), { ssr: false });
 
 export default function LandingGateway() {
   const [entered, setEntered] = useState(false);
-  const [eligible, setEligible] = useState(false);
+  const [entryIntent, setEntryIntent] = useState<'guest' | 'signin' | null>(
+    null,
+  );
+  const [baseline, setBaseline] = useState<BaselineAttempt[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -56,8 +62,18 @@ export default function LandingGateway() {
     };
   }, []);
 
-  function enterGuest() {
+  function continueEntry() {
+    if (baseline.length)
+      sessionStorage.setItem(
+        'paceprep-pending-baseline',
+        JSON.stringify(baseline),
+      );
+    if (entryIntent === 'signin') {
+      window.location.assign('/signin-with-chatgpt?return_to=/');
+      return;
+    }
     sessionStorage.setItem('paceprep-entered', '1');
+    setEntryIntent(null);
     setEntered(true);
   }
 
@@ -74,58 +90,43 @@ export default function LandingGateway() {
           Pace<span>Prep</span>
         </span>
         <div>
-          <button onClick={enterGuest} disabled={!eligible}>
-            Try a drill
-          </button>
-          {eligible ? (
-            <Link href="/signin-with-chatgpt?return_to=/" target="_top">
-              Sign in
-            </Link>
-          ) : (
-            <button disabled>Sign in</button>
-          )}
+          <InstallButton compact />
+          <button onClick={() => setEntryIntent('signin')}>Sign in</button>
         </div>
       </header>
 
       <section className="landing-hero">
         <div className="landing-copy">
           <small>MENTAL MATH TRAINING FOR COMPETITIVE EXAMS</small>
-          <h1>Turn calculation into instant recall.</h1>
+          <h1>Your next speed gain starts with a baseline.</h1>
           <p>
-            Train the exact fractions, tables, squares, cubes, and mental
-            patterns that decide speed in SBI PO and IBPS PO quantitative
-            aptitude.
+            Test your recall in 60 seconds. Then train the fractions, tables,
+            squares, and cubes that slow you down—with progress you can measure.
           </p>
           <p className="landing-scope">
             PacePrep is a foundational arithmetic recall engine—not a complete
             quantitative-aptitude syllabus or a substitute for full mock tests.
           </p>
-          <div className="landing-actions">
-            <button onClick={enterGuest} disabled={!eligible}>
-              Start a guest drill <ChevronRight />
-            </button>
-            {eligible ? (
-              <Link href="/signin-with-chatgpt?return_to=/" target="_top">
-                <User /> Sign in to sync progress
-              </Link>
-            ) : (
-              <button disabled>
-                <User /> Sign in to sync progress
-              </button>
-            )}
-          </div>
-          <label className="age-confirm">
-            <input
-              type="checkbox"
-              checked={eligible}
-              onChange={(event) => setEligible(event.target.checked)}
-            />
-            <span>
-              I confirm I am 18+ and agree to the{' '}
-              <Link href="/terms">Terms</Link> and{' '}
-              <Link href="/privacy">Privacy Policy</Link>.
-            </span>
-          </label>
+          <ol className="landing-method">
+            <li>
+              <b>01</b>
+              <span>Measure your starting pace</span>
+            </li>
+            <li>
+              <b>02</b>
+              <span>Train the facts that need attention</span>
+            </li>
+            <li>
+              <b>03</b>
+              <span>Compare your next attempt</span>
+            </li>
+          </ol>
+          <button
+            className="landing-practice-link"
+            onClick={() => setEntryIntent('guest')}
+          >
+            Already know your level? Go to practice <ChevronRight size={16} />
+          </button>
           <small className="landing-price">
             Free testing preview · no card required · no paid features today
           </small>
@@ -134,43 +135,19 @@ export default function LandingGateway() {
               <Check /> No password handled by PacePrep
             </span>
             <span>
-              <Check /> Guest practice stays on this device
+              <Check /> No account needed for the baseline
             </span>
             <span>
               <Check /> Guest work merges when you later sign in
             </span>
           </div>
         </div>
-        <aside
-          className="landing-preview"
-          aria-label="PacePrep training preview"
-        >
-          <small>EXAMPLE PROGRESS VIEW</small>
-          <div className="preview-question">
-            <b>7/16</b>
-            <span>→</span>
-            <strong>43.75%</strong>
-          </div>
-          <p>Accuracy first. Then faster recall, measured answer by answer.</p>
-          <div className="preview-metrics">
-            <span>
-              <small>ACCURACY</small>
-              <b>91%</b>
-            </span>
-            <span>
-              <small>AVG. TIME</small>
-              <b>2.4s</b>
-            </span>
-            <span>
-              <small>IMPROVEMENT</small>
-              <b>−1.1s</b>
-            </span>
-          </div>
-          <em>
-            Illustrative example. Your dashboard uses only your recorded
-            practice results.
-          </em>
-        </aside>
+        <BaselineDiagnostic
+          onSave={(attempts) => {
+            setBaseline(attempts);
+            setEntryIntent('guest');
+          }}
+        />
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
@@ -195,7 +172,7 @@ export default function LandingGateway() {
           <span>
             <b>Build exam pace</b>
             <small>
-              Use Velocity 10 to compare your baseline with day ten.
+              Compare recorded accuracy and pace across your practice.
             </small>
           </span>
         </article>
@@ -276,6 +253,7 @@ export default function LandingGateway() {
           <Link href="/about">About</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/faq">FAQ</Link>
+          <Link href="/install">Install app</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/contact">Contact</Link>
@@ -288,6 +266,13 @@ export default function LandingGateway() {
           Policy.
         </small>
       </footer>
+      {entryIntent && (
+        <EntryDialog
+          intent={entryIntent}
+          close={() => setEntryIntent(null)}
+          continueEntry={continueEntry}
+        />
+      )}
     </main>
   );
 }
