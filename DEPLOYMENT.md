@@ -83,11 +83,11 @@ The homepage diagnostic does not persist answers until the learner chooses to
 save and affirms 18+ eligibility. Saved diagnostic attempts merge into the
 same fact-level history, with de-duplication on subsequent loads.
 
-The existing Sites deployment is retained instead of a parallel Vercel setup
-because authentication, the D1 binding, and the deployment project are already
-integrated with the Cloudflare Workers runtime. A Vercel migration would require
-replacing those persistence and authentication integrations rather than merely
-adding a configuration file.
+The existing Sites deployment remains available during the Vercel migration.
+The Vercel build now uses a separate Supabase authentication and persistence
+adapter. See `docs/VERCEL.md` for its deployment and account-activation steps.
+Do not retire Sites until the replacement account flow and progress transfers
+have been verified.
 
 If server-side features are added later, keep secrets out of source control,
 declare their production bindings in the hosting platform, and add a documented

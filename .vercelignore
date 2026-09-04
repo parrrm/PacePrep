@@ -1,0 +1,11 @@
+.openai/drizzle
+.wrangler
+dist
+.output
+outputs
+work
+node_modules
+.env*
+tests
+docs
+*.tsbuildinfo

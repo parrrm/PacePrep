@@ -1,6 +1,14 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  getAuthClient,
+  getProgressAccount,
+  progressRequest,
+} from '@/lib/auth-client';
+import { progressStorageKey } from '@/lib/account-storage';
+import { cloudAuthReady } from '@/lib/hosting';
+import { signInHref, signOutHref, signInLabel } from '@/lib/hosting';
+import {
   BarChart3,
   BookOpen,
   Brain,
@@ -98,7 +106,6 @@ type SavedProgress = {
   dark?: boolean;
   input?: 'mcq' | 'typed';
 };
-const STORAGE_KEY = 'paceprep-progress';
 const LEGACY_STORAGE_KEY = 'recall-lab';
 const DAY_MS = 86_400_000;
 const LEITNER_INTERVALS = [0, 1, 3, 7, 14, 30];
@@ -760,6 +767,13 @@ function topConfusion(history: Try[]) {
   return [...counts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
 }
 export default function Home() {
+  const progressAccount = useRef<{ userId: string | null; key: string } | null>(
+    null,
+  );
+  function requestProgress(init: RequestInit = {}) {
+    if (!progressAccount.current) throw new Error('Progress is still loading');
+    return progressRequest(init, progressAccount.current.userId);
+  }
   const [view, setView] = useState<
       'dashboard' | 'practiceHub' | 'practice' | 'summary' | 'mastery'
     >('dashboard'),
@@ -807,11 +821,20 @@ export default function Home() {
     sessionTargets = useRef<Set<string>>(new Set()),
     field = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const id = window.setTimeout(() => {
+    let active = true;
+    const id = window.setTimeout(async () => {
+      // Resolve the current session before reading any account's local history.
+      // A stale localStorage marker is never evidence of a signed-in account.
+      const userId = await getProgressAccount().catch(() => null);
+      if (!active) return;
+      const storageKey = progressStorageKey(userId);
+      progressAccount.current = { userId, key: storageKey };
       try {
         const raw =
-          localStorage.getItem(STORAGE_KEY) ??
-          localStorage.getItem(LEGACY_STORAGE_KEY) ??
+          localStorage.getItem(storageKey) ??
+          (storageKey === 'paceprep-progress'
+            ? localStorage.getItem(LEGACY_STORAGE_KEY)
+            : null) ??
           '{}';
         const s = JSON.parse(raw) as SavedProgress;
         const pending = JSON.parse(
@@ -851,8 +874,31 @@ export default function Home() {
       } catch {}
       setReady(true);
     }, 0);
-    return () => window.clearTimeout(id);
+    return () => {
+      active = false;
+      window.clearTimeout(id);
+    };
   }, []);
+  useEffect(() => {
+    if (!ready || !cloudAuthReady) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    void getAuthClient().then((client) => {
+      if (!active) return;
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        if (
+          active &&
+          (session?.user.id ?? null) !== progressAccount.current?.userId
+        )
+          window.location.reload();
+      });
+      unsubscribe = () => data.subscription.unsubscribe();
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [ready]);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
     if (ready) {
@@ -865,7 +911,10 @@ export default function Home() {
       };
       localSnapshot.current = snapshot;
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+        localStorage.setItem(
+          progressAccount.current!.key,
+          JSON.stringify(snapshot),
+        );
         queueMicrotask(() => setLocalSaveError(false));
       } catch {
         queueMicrotask(() => setLocalSaveError(true));
@@ -880,10 +929,12 @@ export default function Home() {
   useEffect(() => {
     if (!ready) return;
     let active = true;
-    fetch('/api/progress', { cache: 'no-store' })
+    requestProgress()
       .then(async (response) => {
         if (!active) return;
         if (response.status === 401) {
+          setAuthUser(null);
+          setCloudReady(false);
           setAuthStatus('guest');
           return;
         }
@@ -892,6 +943,7 @@ export default function Home() {
           user: AuthUser;
           progress: SavedProgress | null;
         };
+        if (!active) return;
         setAuthUser(payload.user);
         const merged = mergeProgress(localSnapshot.current, payload.progress);
         setStats(merged.stats || {});
@@ -904,7 +956,10 @@ export default function Home() {
         setAuthStatus('signed-in');
       })
       .catch(() => {
-        if (active) setAuthStatus('guest');
+        if (active) {
+          setCloudReady(false);
+          setCloudStatus('error');
+        }
       });
     return () => {
       active = false;
@@ -921,7 +976,7 @@ export default function Home() {
     const id = window.setTimeout(() => {
       if (deletingProgress.current) return;
       setCloudStatus('saving');
-      cloudSave.current = fetch('/api/progress', {
+      cloudSave.current = requestProgress({
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -1126,7 +1181,7 @@ export default function Home() {
       deletingProgress.current = true;
       try {
         await cloudSave.current;
-        const response = await fetch('/api/progress', { method: 'DELETE' });
+        const response = await requestProgress({ method: 'DELETE' });
         if (!response.ok) throw new Error('Delete failed');
       } catch {
         deletingProgress.current = false;
@@ -1138,8 +1193,9 @@ export default function Home() {
     setHistory([]);
     setCompletedSessions(0);
     setCloudStatus('saved');
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    localStorage.removeItem(progressAccount.current!.key);
+    if (!progressAccount.current!.userId)
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
     setProfileOpen(false);
     setView('dashboard');
     deletingProgress.current = false;
@@ -1578,8 +1634,8 @@ function ProfilePanel({
         ) : (
           <p>
             Your progress is stored on this device.{' '}
-            <Link href="/signin-with-chatgpt?return_to=/" target="_top">
-              Sign in with ChatGPT
+            <Link href={signInHref} target="_top">
+              {signInLabel}
             </Link>{' '}
             to keep it across devices.
           </p>
@@ -1626,11 +1682,7 @@ function ProfilePanel({
             Delete progress
           </button>
           {user && (
-            <Link
-              className="sign-out"
-              href="/signout-with-chatgpt?return_to=/"
-              target="_top"
-            >
+            <Link className="sign-out" href={signOutHref} target="_top">
               Sign out
             </Link>
           )}

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { onVercel, cloudAuthReady } from '@/lib/hosting';
 import { SiteLink as Link } from './site-link';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,11 @@ export default function EntryDialog({
         </DialogTitle>
         <DialogDescription>
           {intent === 'signin'
-            ? 'Current preview sign-in uses ChatGPT. Guest practice does not require an account.'
+            ? onVercel
+              ? cloudAuthReady
+                ? 'Sign in with your email to sync progress. Guest practice does not require an account.'
+                : 'Cloud accounts are being connected for this preview. You can practise as a guest now.'
+              : 'Current preview sign-in uses ChatGPT. Guest practice does not require an account.'
             : 'Your answers and settings will be saved on this device. You can delete them in Profile at any time.'}
         </DialogDescription>
         <label className="age-confirm">

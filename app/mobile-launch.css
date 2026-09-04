@@ -1,4 +1,33 @@
 /* Mobile launch: live baseline, readable feedback, and installable app shell. */
+.auth-card {
+  width: min(100%, 460px);
+  padding: clamp(20px, 4vw, 32px);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--purple);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--fg);
+}
+.auth-card form, .auth-card form > label { display: grid; gap: 9px; }
+.auth-card form { gap: 18px; }
+.auth-card label { font-size: 15px; font-weight: 650; }
+.auth-card input:not([type='checkbox']) {
+  width: 100%; min-height: 48px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--fg); font-size: 16px;
+}
+.auth-card small { color: var(--muted); font-size: 13px; }
+.auth-switch { display: flex; gap: 8px; }
+.auth-switch button, .auth-text-button {
+  min-height: 44px; border: 0; border-radius: 8px; padding: 8px 12px;
+  background: transparent; color: var(--muted); font-size: 14px; font-weight: 650; cursor: pointer;
+}
+.auth-switch button[aria-pressed='true'] { color: var(--purple); background: var(--purple-soft); }
+.auth-card .auth-age { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-size: 14px; }
+.auth-age input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; accent-color: var(--purple); }
+.auth-card form button { min-height: 48px; background: var(--primary); color: var(--card); }
+.auth-card .auth-error { color: var(--red); font-size: 14px; }
+.auth-return { display: inline-flex; align-items: center; min-height: 44px; margin-top: 18px; color: var(--purple); font-size: 15px; font-weight: 700; }
 .landing-hero {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 0.95fr);
   align-items: center;

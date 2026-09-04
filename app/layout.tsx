@@ -4,6 +4,14 @@ import './globals.css';
 import './mobile-launch.css';
 import { PwaProvider } from './pwa-provider';
 
+const origin =
+  process.env.PACEPREP_SITE_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : undefined) ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+  'https://recalllab-sbi-ibps-mental-math.milky-horse-8149.chatgpt.site';
+
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
@@ -15,9 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    'https://recalllab-sbi-ibps-mental-math.milky-horse-8149.chatgpt.site',
-  ),
+  metadataBase: new URL(origin),
   title: {
     default: 'PacePrep — Mental Math Recall Training for Banking Exams',
     template: '%s · PacePrep',
@@ -32,7 +38,7 @@ export const metadata: Metadata = {
     'multiplication tables practice',
   ],
   alternates: { canonical: '/' },
-  robots: { index: true, follow: true },
+  robots: { index: process.env.VERCEL_ENV !== 'preview', follow: true },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'PacePrep', statusBarStyle: 'default' },
   icons: { icon: '/icons/app.svg', apple: '/icons/apple-touch-icon.png' },

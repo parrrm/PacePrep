@@ -1,88 +1,95 @@
-import { eq } from 'drizzle-orm';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
-import { getDb } from '@/db';
-import { learnerProgress } from '@/db/schema';
+import { openProgressStore } from 'paceprep:progress-store';
 
 export const dynamic = 'force-dynamic';
 
 function privateJson(body: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
   headers.set('Cache-Control', 'private, no-store');
-  headers.set('Vary', 'Cookie');
+  headers.set('Vary', 'Cookie, Authorization');
   return Response.json(body, { ...init, headers });
 }
 
-export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return privateJson({ authenticated: false }, { status: 401 });
-
-  const db = await getDb();
-  const [record] = await db
-    .select({
-      progressJson: learnerProgress.progressJson,
-      updatedAt: learnerProgress.updatedAt,
-    })
-    .from(learnerProgress)
-    .where(eq(learnerProgress.userId, user.userId))
-    .limit(1);
-
-  let progress: unknown = null;
-  if (record?.progressJson) {
-    try {
-      progress = JSON.parse(record.progressJson);
-    } catch {
-      progress = null;
-    }
+export async function GET(request: Request) {
+  try {
+    const store = await openProgressStore(request);
+    if (!store) return privateJson({ authenticated: false }, { status: 401 });
+    return privateJson({
+      authenticated: true,
+      user: store.user,
+      ...(await store.read()),
+    });
+  } catch {
+    return privateJson(
+      {
+        error: 'Cloud progress unavailable. Your local progress is preserved.',
+      },
+      { status: 503 },
+    );
   }
-  return privateJson({
-    authenticated: true,
-    user,
-    progress,
-    updatedAt: record?.updatedAt ?? null,
-  });
+}
+
+function crossOrigin(request: Request) {
+  const origin = request.headers.get('origin');
+  return origin !== null && origin !== new URL(request.url).origin;
 }
 
 export async function PUT(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user)
-    return privateJson({ error: 'Authentication required' }, { status: 401 });
-
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body !== 'object')
-    return privateJson({ error: 'Invalid progress payload' }, { status: 400 });
-  const progressJson = JSON.stringify(body);
-  if (progressJson.length > 900_000)
+  if (crossOrigin(request))
     return privateJson(
-      { error: 'Progress payload is too large' },
-      { status: 413 },
+      { error: 'Cross-origin write rejected' },
+      { status: 403 },
     );
-
-  const db = await getDb();
-  const now = Date.now();
-  await db
-    .insert(learnerProgress)
-    .values({
-      userId: user.userId,
-      email: user.email,
-      progressJson,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: learnerProgress.userId,
-      set: { email: user.email, progressJson, updatedAt: now },
-    });
-  return privateJson({ saved: true, updatedAt: now });
+  try {
+    const store = await openProgressStore(request);
+    if (!store)
+      return privateJson({ error: 'Authentication required' }, { status: 401 });
+    if (!request.headers.get('content-type')?.includes('application/json'))
+      return privateJson({ error: 'JSON payload required' }, { status: 415 });
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).length > 900_000)
+      return privateJson(
+        { error: 'Progress payload is too large' },
+        { status: 413 },
+      );
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return privateJson(
+        { error: 'Invalid progress payload' },
+        { status: 400 },
+      );
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      return privateJson(
+        { error: 'Invalid progress payload' },
+        { status: 400 },
+      );
+    return privateJson({ saved: true, updatedAt: await store.write(body) });
+  } catch {
+    return privateJson(
+      { error: 'Cloud save unavailable. Your local progress is preserved.' },
+      { status: 503 },
+    );
+  }
 }
 
-export async function DELETE() {
-  const user = await getChatGPTUser();
-  if (!user)
-    return privateJson({ error: 'Authentication required' }, { status: 401 });
-
-  const db = await getDb();
-  await db
-    .delete(learnerProgress)
-    .where(eq(learnerProgress.userId, user.userId));
-  return privateJson({ deleted: true });
+export async function DELETE(request: Request) {
+  if (crossOrigin(request))
+    return privateJson(
+      { error: 'Cross-origin write rejected' },
+      { status: 403 },
+    );
+  try {
+    const store = await openProgressStore(request);
+    if (!store)
+      return privateJson({ error: 'Authentication required' }, { status: 401 });
+    await store.remove();
+    return privateJson({ deleted: true });
+  } catch {
+    return privateJson(
+      { error: 'Could not delete cloud progress. Please retry.' },
+      { status: 503 },
+    );
+  }
 }

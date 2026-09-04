@@ -6,6 +6,8 @@ import { SiteLink as Link } from './site-link';
 import BaselineDiagnostic from './baseline-diagnostic';
 import { type BaselineAttempt } from '@/lib/baseline';
 import { InstallButton } from './pwa-provider';
+import { progressRequest } from '@/lib/auth-client';
+import { signInHref } from '@/lib/hosting';
 import {
   BookOpen,
   Check,
@@ -52,7 +54,7 @@ export default function LandingGateway() {
         window.clearTimeout(timer);
       };
     }
-    void fetch('/api/progress', { cache: 'no-store' })
+    void progressRequest()
       .then((response) => {
         if (active && response.ok) setEntered(true);
       })
@@ -69,7 +71,7 @@ export default function LandingGateway() {
         JSON.stringify(baseline),
       );
     if (entryIntent === 'signin') {
-      window.location.assign('/signin-with-chatgpt?return_to=/');
+      window.location.assign(signInHref);
       return;
     }
     sessionStorage.setItem('paceprep-entered', '1');
@@ -132,7 +134,7 @@ export default function LandingGateway() {
           </small>
           <div className="landing-trust">
             <span>
-              <Check /> No password handled by PacePrep
+              <Check /> Guest practice without an account
             </span>
             <span>
               <Check /> No account needed for the baseline

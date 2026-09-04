@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { InfoShell } from '@/app/info-shell';
+import { onVercel } from '@/lib/hosting';
 
 export const metadata: Metadata = { title: 'Privacy Notice' };
 
@@ -59,9 +60,11 @@ export default function PrivacyPage() {
         <h2>Storage and security</h2>
         <p>
           Guest data is device-local. Signed-in progress is stored in the
-          application&apos;s Cloudflare D1 database and transmitted over HTTPS.
-          We do not claim a specific storage region or additional encryption
-          property until it is contractually verified.
+          {onVercel
+            ? 'Supabase database when cloud accounts are enabled'
+            : 'application’s Cloudflare D1 database'}{' '}
+          and transmitted over HTTPS. We do not claim a specific storage region
+          or additional encryption property until it is contractually verified.
         </p>
       </section>
       <section>

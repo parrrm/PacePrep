@@ -1775,6 +1775,8 @@ body {
   --muted: #526574;
   --border: #cbd5df;
   --primary: #174a67;
+  --purple: #6f4bb8;
+  --purple-soft: #f0ebfa;
   --pale: #e6eef3;
   --green: #24765a;
   --blue: #326f8a;
@@ -1790,6 +1792,8 @@ body {
   --muted: #b6c3cc;
   --border: #3d5363;
   --primary: #78a9bd;
+  --purple: #b49aeb;
+  --purple-soft: #30274a;
   --pale: #203746;
   --green: #69b697;
   --blue: #72aac1;
@@ -1817,9 +1821,12 @@ body {
   color: var(--fg);
 }
 .brand > b {
-  background: var(--primary);
+  background: var(--purple);
   border-radius: 9px;
   transform: none;
+}
+.brand > span {
+  color: var(--purple);
 }
 .topbar nav {
   gap: 8px;
@@ -1832,8 +1839,8 @@ body {
   font-size: 13px;
 }
 .topbar nav button.active {
-  background: var(--pale);
-  color: var(--primary);
+  background: var(--purple-soft);
+  color: var(--purple);
 }
 .topbar nav button.active:after {
   display: none;
@@ -3709,7 +3716,7 @@ body {
   inset: 0;
   grid-template-columns: repeat(9, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  color: rgba(23, 74, 103, 0.11);
+  color: color-mix(in srgb, var(--purple) 13%, transparent);
   padding: 16px;
 }
 .landing-nav,
@@ -3769,7 +3776,7 @@ body {
   font-size: 10px;
   letter-spacing: 0.15em;
   font-weight: 850;
-  color: #326f8a;
+  color: var(--purple);
 }
 .landing-copy h1 {
   max-width: 680px;
