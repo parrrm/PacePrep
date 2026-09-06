@@ -142,6 +142,9 @@ export default function LandingGateway() {
           >
             Already know your level? Go to practice <ChevronRight size={16} />
           </button>
+          <p>
+            <Link href="/ops">Or open mental + − × ÷ drills →</Link>
+          </p>
           <small className="landing-price">
             Free testing preview · no card required · no paid features today
           </small>
@@ -173,15 +176,17 @@ export default function LandingGateway() {
             <small>Learn core facts with direct and reverse practice.</small>
           </span>
         </article>
-        <article>
-          <Target />
-          <span>
-            <b>Train operations</b>
-            <small>
-              Addition, subtraction, multiplication, and division without paper.
-            </small>
-          </span>
-        </article>
+        <a href="/ops" className="landing-path-link">
+          <article>
+            <Target />
+            <span>
+              <b>Train operations</b>
+              <small>
+                Addition, subtraction, multiplication, and division without paper.
+              </small>
+            </span>
+          </article>
+        </a>
         <article>
           <Clock3 />
           <span>
@@ -193,79 +198,10 @@ export default function LandingGateway() {
         </article>
       </section>
 
-      <section
-        className="landing-testimonials"
-        aria-labelledby="learner-stories"
-      >
-        <header>
-          <small>LEARNER STORIES</small>
-          <h2 id="learner-stories">Results students can feel in a mock test</h2>
-          <p>
-            Individual outcomes vary; these learners describe their own
-            experience.
-          </p>
-        </header>
-        <div>
-          <figure>
-            <blockquote>
-              “I used to spend 8–10 seconds converting fractions to percentages
-              during DI sets. After three weeks of daily reverse-recall drills,
-              that's under 2 seconds—and it showed up directly in my mock
-              test scores.”
-            </blockquote>
-            <figcaption>Ananya R. · SBI PO aspirant</figcaption>
-          </figure>
-          <figure>
-            <blockquote>
-              “The Velocity 10 challenge is what finally got me past the
-              sectional cutoff in quant. I could see my day-1 baseline versus
-              day-10 side by side.”
-            </blockquote>
-            <figcaption>Rohit S. · IBPS PO 2026 candidate</figcaption>
-          </figure>
-          <figure>
-            <blockquote>
-              “Three months later, tables and squares are automatic; I
-              don't even think about them anymore.”
-            </blockquote>
-            <figcaption>Priya M. · IBPS Clerk aspirant</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section className="landing-faq" aria-labelledby="faq-title">
-        <header>
-          <small>QUICK ANSWERS</small>
-          <h2 id="faq-title">How PacePrep fits exam preparation</h2>
-        </header>
-        <details>
-          <summary>
-            How does spaced repetition help in DI and approximation?
-          </summary>
-          <p>
-            It reduces the time spent reconstructing common facts, leaving more
-            working memory for the actual set, comparison, and decision.
-          </p>
-        </details>
-        <details>
-          <summary>Why train fractions in both directions?</summary>
-          <p>
-            Banking questions require both recognition and reconstruction. Pair
-            Recall tracks 7/16 → 43.75% separately from 43.75% → 7/16.
-          </p>
-        </details>
-        <details>
-          <summary>What happens to guest practice after sign-in?</summary>
-          <p>
-            Your device history is merged with your signed-in progress. Matching
-            answers are de-duplicated, so the same attempt is not counted twice.
-          </p>
-        </details>
-      </section>
-
       <footer className="landing-footer">
         <nav aria-label="Footer navigation">
           <Link href="/about">About</Link>
+          <Link href="/ops">Operations</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/faq">FAQ</Link>
           <Link href="/install">Install app</Link>
