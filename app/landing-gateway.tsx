@@ -140,10 +140,13 @@ export default function LandingGateway() {
             className="landing-practice-link"
             onClick={() => setEntryIntent('guest')}
           >
-            Already know your level? Go to practice <ChevronRight size={16} />
+            Already know your level? Go to recall practice{' '}
+            <ChevronRight size={16} />
           </button>
           <p>
-            <Link href="/ops">Or open mental + − × ÷ drills →</Link>
+            <Link href="/practice">Open the practice hub</Link>
+            {' · '}
+            <Link href="/ops">Mental + − × ÷ drills</Link>
           </p>
           <small className="landing-price">
             Free testing preview · no card required · no paid features today
@@ -169,13 +172,15 @@ export default function LandingGateway() {
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
-        <article>
-          <BookOpen />
-          <span>
-            <b>Build recall</b>
-            <small>Learn core facts with direct and reverse practice.</small>
-          </span>
-        </article>
+        <a href="/practice" className="landing-path-link">
+          <article>
+            <BookOpen />
+            <span>
+              <b>Practice hub</b>
+              <small>Recall facts and in-head operations in one place.</small>
+            </span>
+          </article>
+        </a>
         <a href="/ops" className="landing-path-link">
           <article>
             <Target />
@@ -201,6 +206,7 @@ export default function LandingGateway() {
       <footer className="landing-footer">
         <nav aria-label="Footer navigation">
           <Link href="/about">About</Link>
+          <Link href="/practice">Practice</Link>
           <Link href="/ops">Operations</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/faq">FAQ</Link>
