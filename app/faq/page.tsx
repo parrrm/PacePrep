@@ -19,6 +19,14 @@ export default function FaqPage() {
         </p>
       </section>
       <section>
+        <h2>Can I train addition, subtraction, multiplication, and division without paper?</h2>
+        <p>
+          Yes. Open Operations from the home page or go to /ops. Each family is
+          a closed bank of mental items. Type the answer; a strategy line appears
+          after you check. Guest progress stays on this device.
+        </p>
+      </section>
+      <section>
         <h2>Should I memorise fraction-percentage pairs or calculate them?</h2>
         <p>
           Understand the conversion once, then train important exam pairs until
