@@ -22,6 +22,10 @@ import {
   type OperationFamilyId,
 } from '@/lib/practice-families';
 import { operationsByTopic, type OpFact } from '@/lib/mental-ops';
+import {
+  completeOperationSession,
+  recordOperationAttempt,
+} from '@/lib/ops-progress';
 
 type Try = {
   id: string;
@@ -63,6 +67,8 @@ export default function OpsPage() {
   const started = useRef(0);
   const field = useRef<HTMLInputElement>(null);
   const timer = useRef<number | null>(null);
+  const sessionId = useRef('');
+  const counted = useRef(false);
 
   const fact = deck[index];
   const done = (!fact && log.length > 0) || (sprint && left === 0 && log.length > 0);
@@ -71,6 +77,8 @@ export default function OpsPage() {
     const pool = shuffle(operationsByTopic(next));
     const nextDeck = mode === 'sprint' ? pool : pool.slice(0, 10);
     if (timer.current) window.clearInterval(timer.current);
+    sessionId.current = `ops-${Date.now()}`;
+    counted.current = false;
     setFamily(next);
     setSprint(mode === 'sprint');
     setLimit(mode === 'sprint' ? 0 : 10);
@@ -102,8 +110,27 @@ export default function OpsPage() {
       ...partial,
       ms: partial.ms ?? performance.now() - started.current,
     };
+    if (family) {
+      recordOperationAttempt({
+        id: item.id,
+        topic: family,
+        q: item.q,
+        a: item.a,
+        raw: item.raw,
+        correct: item.correct,
+        skipped: item.skipped,
+        ms: item.ms,
+        sessionId: sessionId.current,
+      });
+    }
     setLog((current) => [...current, item]);
     setResult(item);
+  }
+
+  function markSessionComplete() {
+    if (counted.current || !log.length) return;
+    counted.current = true;
+    completeOperationSession();
   }
 
   function submit() {
@@ -161,6 +188,7 @@ export default function OpsPage() {
 
   if (done || (sprint && left === 0 && log.length)) {
     if (timer.current) window.clearInterval(timer.current);
+    markSessionComplete();
     return (
       <main className="page practice-hub">
         <div className="masteryTitle">
