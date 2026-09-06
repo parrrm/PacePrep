@@ -1,0 +1,57 @@
+.practice-family {
+  margin: 8px 0 28px;
+}
+.practice-family > header {
+  margin-bottom: 14px;
+}
+.practice-family > header small {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--primary);
+  font-weight: 800;
+}
+.practice-family > header h2 {
+  font-size: 18px;
+  letter-spacing: -0.03em;
+  margin: 6px 0 4px;
+}
+.practice-family > header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 62ch;
+}
+.domain-grid > button.coming-next {
+  min-height: 200px;
+  background: var(--card);
+}
+.domain-grid > button.coming-next header em {
+  background: var(--pale);
+  color: var(--primary);
+}
+.coming-next-pill {
+  font-size: 13px !important;
+  font-style: normal !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary) !important;
+}
+.operation-empty {
+  display: grid;
+  gap: 10px;
+}
+.operation-empty b {
+  font-size: 15px;
+}
+.operation-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+@media (max-width: 720px) {
+  .practice-family > header h2 {
+    font-size: 16px;
+  }
+}
