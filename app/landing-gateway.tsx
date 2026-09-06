@@ -115,8 +115,8 @@ export default function LandingGateway() {
           <small>MENTAL MATH TRAINING FOR COMPETITIVE EXAMS</small>
           <h1>Your next speed gain starts with a baseline.</h1>
           <p>
-            Test your recall in 60 seconds. Then train the fractions, tables,
-            squares, and cubes that slow you down—with progress you can measure.
+            Test your recall in 60 seconds. Then train the facts and in-head
+            operations that slow you down—with progress you can measure.
           </p>
           <p className="landing-scope">
             PacePrep is a foundational arithmetic recall engine—not a complete
@@ -176,9 +176,9 @@ export default function LandingGateway() {
         <article>
           <Target />
           <span>
-            <b>Attack weak areas</b>
+            <b>Train operations</b>
             <small>
-              Spaced repetition prioritises slow or inaccurate facts.
+              Addition, subtraction, multiplication, and division without paper.
             </small>
           </span>
         </article>
@@ -210,7 +210,7 @@ export default function LandingGateway() {
             <blockquote>
               “I used to spend 8–10 seconds converting fractions to percentages
               during DI sets. After three weeks of daily reverse-recall drills,
-              that&apos;s under 2 seconds—and it showed up directly in my mock
+              that's under 2 seconds—and it showed up directly in my mock
               test scores.”
             </blockquote>
             <figcaption>Ananya R. · SBI PO aspirant</figcaption>
@@ -226,7 +226,7 @@ export default function LandingGateway() {
           <figure>
             <blockquote>
               “Three months later, tables and squares are automatic; I
-              don&apos;t even think about them anymore.”
+              don't even think about them anymore.”
             </blockquote>
             <figcaption>Priya M. · IBPS Clerk aspirant</figcaption>
           </figure>
