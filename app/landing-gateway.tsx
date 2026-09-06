@@ -36,6 +36,7 @@ const EntryDialog = dynamic(() => import('./entry-dialog'), { ssr: false });
 
 export default function LandingGateway() {
   const [entered, setEntered] = useState(false);
+  const [grokTest, setGrokTest] = useState(false);
   const [entryIntent, setEntryIntent] = useState<'guest' | 'signin' | null>(
     null,
   );
@@ -43,6 +44,18 @@ export default function LandingGateway() {
 
   useEffect(() => {
     let active = true;
+    if (new URLSearchParams(window.location.search).get('grok-test') === '1') {
+      const timer = window.setTimeout(() => {
+        if (active) {
+          setGrokTest(true);
+          setEntered(true);
+        }
+      }, 0);
+      return () => {
+        active = false;
+        window.clearTimeout(timer);
+      };
+    }
     if (sessionStorage.getItem('paceprep-entered') === '1') {
       const timer = window.setTimeout(() => {
         if (active) {
@@ -79,7 +92,7 @@ export default function LandingGateway() {
     setEntered(true);
   }
 
-  if (entered) return <Trainer />;
+  if (entered) return <Trainer grokTest={grokTest} />;
 
   return (
     <main className="landing-shell">

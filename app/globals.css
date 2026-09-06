@@ -1,6 +1,24 @@
 @import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+
+.grok-test-banner {
+  position: relative;
+  z-index: 20;
+  padding: 0.55rem 1rem;
+  background: #fef3c7;
+  border-bottom: 1px solid #f59e0b;
+  color: #78350f;
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.grok-test-banner a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 @source './';
 @source '../components/ui/button.tsx';
 @source '../components/ui/dialog.tsx';

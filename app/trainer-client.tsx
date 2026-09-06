@@ -766,14 +766,22 @@ function topConfusion(history: Try[]) {
     });
   return [...counts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
 }
-export default function Home() {
+export default function Home({ grokTest = false }: { grokTest?: boolean }) {
   const progressAccount = useRef<{ userId: string | null; key: string } | null>(
     null,
   );
-  function requestProgress(init: RequestInit = {}) {
-    if (!progressAccount.current) throw new Error('Progress is still loading');
-    return progressRequest(init, progressAccount.current.userId);
-  }
+  const requestProgress = useCallback(
+    (init: RequestInit = {}) => {
+      if (grokTest)
+        return Promise.resolve(
+          Response.json({ authenticated: false }, { status: 401 }),
+        );
+      if (!progressAccount.current)
+        throw new Error('Progress is still loading');
+      return progressRequest(init, progressAccount.current.userId);
+    },
+    [grokTest],
+  );
   const [view, setView] = useState<
       'dashboard' | 'practiceHub' | 'practice' | 'summary' | 'mastery'
     >('dashboard'),
@@ -825,9 +833,13 @@ export default function Home() {
     const id = window.setTimeout(async () => {
       // Resolve the current session before reading any account's local history.
       // A stale localStorage marker is never evidence of a signed-in account.
-      const userId = await getProgressAccount().catch(() => null);
+      const userId = grokTest
+        ? null
+        : await getProgressAccount().catch(() => null);
       if (!active) return;
-      const storageKey = progressStorageKey(userId);
+      const storageKey = grokTest
+        ? 'paceprep-grok-test'
+        : progressStorageKey(userId);
       progressAccount.current = { userId, key: storageKey };
       try {
         const raw =
@@ -878,9 +890,9 @@ export default function Home() {
       active = false;
       window.clearTimeout(id);
     };
-  }, []);
+  }, [grokTest]);
   useEffect(() => {
-    if (!ready || !cloudAuthReady) return;
+    if (!ready || !cloudAuthReady || grokTest) return;
     let active = true;
     let unsubscribe: (() => void) | undefined;
     void getAuthClient().then((client) => {
@@ -898,7 +910,7 @@ export default function Home() {
       active = false;
       unsubscribe?.();
     };
-  }, [ready]);
+  }, [ready, grokTest]);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
     if (ready) {
@@ -964,7 +976,7 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [ready, syncTick]);
+  }, [ready, syncTick, requestProgress]);
   useEffect(() => {
     if (
       !ready ||
@@ -1004,6 +1016,7 @@ export default function Home() {
     cloudReady,
     authStatus,
     syncTick,
+    requestProgress,
   ]);
   useEffect(
     () => () => {
@@ -1194,7 +1207,7 @@ export default function Home() {
     setCompletedSessions(0);
     setCloudStatus('saved');
     localStorage.removeItem(progressAccount.current!.key);
-    if (!progressAccount.current!.userId)
+    if (!progressAccount.current!.userId && !grokTest)
       localStorage.removeItem(LEGACY_STORAGE_KEY);
     setProfileOpen(false);
     setView('dashboard');
@@ -1373,6 +1386,12 @@ export default function Home() {
     ).length;
   return (
     <main>
+      {grokTest && (
+        <output className="grok-test-banner">
+          Grok QA mode · isolated guest progress ·{' '}
+          <Link href="/grok-test">open test checklist</Link>
+        </output>
+      )}
       {view !== 'practice' && view !== 'summary' && <MathAtmosphere />}
       <Header
         dark={dark}
