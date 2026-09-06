@@ -48,7 +48,7 @@ export const PRACTICE_HUB_COPY = {
   eyebrow: 'PRACTICE HUB',
   title: 'Choose what to train',
   intro:
-    'Recall facts first. Mental operations train + − × ÷ without pen or paper — trainers ship one family at a time.',
+    'Recall facts first. Mental operations train + − × ÷ without pen or paper.',
   recallEyebrow: 'RECALL FACTS',
   recallTitle: 'Automatic pairs and tables',
   recallIntro:
@@ -56,10 +56,10 @@ export const PRACTICE_HUB_COPY = {
   opsEyebrow: 'MENTAL OPERATIONS',
   opsTitle: 'Add, subtract, multiply, divide in your head',
   opsIntro:
-    'Procedure fluency, not written algorithms. Each trainer opens when it is ready to score accuracy and speed.',
-  opsReadyLabel: 'Trainer next',
+    'Procedure fluency, not written algorithms. Type the answer; a strategy line appears after you check.',
+  opsReadyLabel: 'Open',
   mixedEyebrow: 'CROSS-CATEGORY TRAINING',
   mixedTitle: 'Mixed review & timed practice',
   mixedIntro:
-    'Let the scheduler combine due, weak, reverse, and strong-review facts from the banks that already exist.',
+    'Let the scheduler combine due, weak, reverse, and strong-review facts — including mental operations.',
 } as const;
