@@ -3,7 +3,16 @@
 import { answersMatch } from '@/lib/recall-math';
 import { OPERATION_FACTS, OPERATION_TARGETS } from '@/lib/mental-ops';
 
-export type Topic = 'fractions' | 'tables' | 'squares' | 'cubes' | 'consecutive' | 'addition' | 'subtraction' | 'multiplication' | 'division';
+export type Topic =
+  | 'fractions'
+  | 'tables'
+  | 'squares'
+  | 'cubes'
+  | 'consecutive'
+  | 'addition'
+  | 'subtraction'
+  | 'multiplication'
+  | 'division';
 export type PracticeCategory = 'fractions' | 'tables' | 'powers' | 'percentages';
 export type Level = 'Weak' | 'Learning' | 'Strong' | 'Mastered';
 export type Mode =
@@ -69,29 +78,13 @@ export const LEGACY_STORAGE_KEY = 'recall-lab';
 export const DAY_MS = 86_400_000;
 export const LEITNER_INTERVALS = [0, 1, 3, 7, 14, 30];
 export const TOPICS: Record<Topic, { name: string; short: string; target: number }> = {
-  fractions: {
-    name: 'Fraction \u2194 Percentage',
-    short: 'Fractions',
-    target: 2600,
-  },
+  fractions: { name: 'Fraction <-> Percentage', short: 'Fractions', target: 2600 },
   tables: { name: 'Multiplication Tables', short: 'Tables', target: 2200 },
   squares: { name: 'Squares', short: 'Squares', target: 2000 },
   cubes: { name: 'Cubes', short: 'Cubes', target: 2200 },
-  consecutive: {
-    name: 'Consecutive Multiplication',
-    short: 'Consecutive',
-    target: 2800,
-  },
+  consecutive: { name: 'Consecutive Multiplication', short: 'Consecutive', target: 2800 },
   addition: { name: 'Mental Addition', short: 'Addition', target: OPERATION_TARGETS.addition },
-  subtraction: {
-    name: 'Mental Subtraction',
-    short: 'Subtraction',
-    target: OPERATION_TARGETS.subtraction,
-  },
-  multiplication: {
-    name: 'Mental Multiplication',
-    short: 'Multiplication',
-    target: OPERATION_TARGETS.multiplication,
-  },
+  subtraction: { name: 'Mental Subtraction', short: 'Subtraction', target: OPERATION_TARGETS.subtraction },
+  multiplication: { name: 'Mental Multiplication', short: 'Multiplication', target: OPERATION_TARGETS.multiplication },
   division: { name: 'Mental Division', short: 'Division', target: OPERATION_TARGETS.division },
 };
