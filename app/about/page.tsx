@@ -13,9 +13,14 @@ export default function AboutPage() {
       <section>
         <h2>What PacePrep trains</h2>
         <p>
-          Fractions and percentages, tables, squares, cubes, and consecutive
-          products—directly and in reverse. Every direction is tracked as a
-          separate fact.
+          Recall facts: fractions and percentages, tables, squares, cubes, and
+          consecutive products—directly and in reverse. Every direction is
+          tracked as a separate fact.
+        </p>
+        <p>
+          Mental operations: addition, subtraction, multiplication, and
+          division done in your head, without pen or paper. Those trainers
+          open one family at a time from the practice hub.
         </p>
       </section>
       <section>
