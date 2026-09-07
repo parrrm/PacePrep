@@ -6,7 +6,14 @@ import {
   progressRequest,
 } from '@/lib/auth-client';
 import { progressStorageKey } from '@/lib/account-storage';
-import { cloudAuthReady } from '@/lib/hosting';
+import { cloudAuthReady, onVercel } from '@/lib/hosting';
+import {
+  OPERATION_FACTS,
+  OPERATION_TARGETS,
+  type OpTopic,
+} from '@/lib/mental-ops';
+import { isRecallFamily } from '@/lib/practice-families';
+import PracticeHome from './practice/practice-client';
 import { signInHref, signOutHref, signInLabel } from '@/lib/hosting';
 import {
   BarChart3,
@@ -45,8 +52,21 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 
-type Topic = 'fractions' | 'tables' | 'squares' | 'cubes' | 'consecutive';
-type PracticeCategory = 'fractions' | 'tables' | 'powers' | 'percentages';
+type Topic =
+  | 'fractions'
+  | 'tables'
+  | 'squares'
+  | 'cubes'
+  | 'consecutive'
+  | OpTopic;
+type PracticeCategory =
+  | 'fractions'
+  | 'tables'
+  | 'powers'
+  | 'percentages'
+  | 'squares'
+  | 'cubes'
+  | 'consecutive';
 type Level = 'Weak' | 'Learning' | 'Strong' | 'Mastered';
 type Mode =
   | 'learn'
@@ -65,6 +85,7 @@ type Fact = {
   q: string;
   a: string;
   reverse?: boolean;
+  strategy?: string;
 };
 type Stat = {
   attempts: number;
@@ -110,6 +131,26 @@ const LEGACY_STORAGE_KEY = 'recall-lab';
 const DAY_MS = 86_400_000;
 const LEITNER_INTERVALS = [0, 1, 3, 7, 14, 30];
 const TOPICS: Record<Topic, { name: string; short: string; target: number }> = {
+  addition: {
+    name: 'Addition',
+    short: 'Addition',
+    target: OPERATION_TARGETS.addition,
+  },
+  subtraction: {
+    name: 'Subtraction',
+    short: 'Subtraction',
+    target: OPERATION_TARGETS.subtraction,
+  },
+  multiplication: {
+    name: 'Mental multiplication',
+    short: 'Multiplication',
+    target: OPERATION_TARGETS.multiplication,
+  },
+  division: {
+    name: 'Mental division',
+    short: 'Division',
+    target: OPERATION_TARGETS.division,
+  },
   fractions: {
     name: 'Fraction ↔ Percentage',
     short: 'Fractions',
@@ -381,7 +422,7 @@ function bank() {
     );
   return f;
 }
-const FACTS = bank();
+const FACTS: Fact[] = [...bank(), ...OPERATION_FACTS];
 const level = (s?: Stat, target = 2200): Level => {
   if (!s || s.attempts < 2) return 'Weak';
   const ac = s.correct / s.attempts,
@@ -618,6 +659,7 @@ function modePool(
   group: string,
   retryIds: string[] = [],
 ) {
+  if (mode === 'sprint') return FACTS.filter((fact) => !fact.strategy);
   if (retryIds.length) {
     const targets = FACTS.filter((fact) => retryIds.includes(fact.id)),
       topics = new Set(targets.map((fact) => fact.topic));
@@ -650,17 +692,17 @@ function modePool(
   }
   return FACTS;
 }
-function testDeck(limit: number) {
-  const topics = Object.keys(TOPICS) as Topic[],
+function testDeck(limit: number, pool: Fact[]) {
+  const topics = [...new Set(pool.map((fact) => fact.topic))],
     quota = Math.floor(limit / topics.length),
     remainder = limit % topics.length,
     selected = topics.flatMap((topic, index) => {
       const count = quota + (index < remainder ? 1 : 0),
         direct = shuffle(
-          FACTS.filter((fact) => fact.topic === topic && !fact.reverse),
+          pool.filter((fact) => fact.topic === topic && !fact.reverse),
         ),
         reverse = shuffle(
-          FACTS.filter((fact) => fact.topic === topic && fact.reverse),
+          pool.filter((fact) => fact.topic === topic && fact.reverse),
         ),
         topicDeck: Fact[] = [];
       while (topicDeck.length < count && (direct.length || reverse.length)) {
@@ -686,7 +728,7 @@ function createDeck(mode: Mode, pool: Fact[], stats: Record<string, Stat>) {
         : mode === 'test50'
           ? 50
           : 0;
-  if (limit) return testDeck(limit);
+  if (limit) return testDeck(limit, pool);
   if (mode === 'random') return balancedDeck(pool, stats, false);
   return balancedDeck(pool, stats, true);
 }
@@ -782,6 +824,10 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     },
     [grokTest],
   );
+  const [entryCategory, setEntryCategory] = useState<PracticeCategory | null>(
+    null,
+  );
+  const [reviewEntry, setReviewEntry] = useState(false);
   const [view, setView] = useState<
       'dashboard' | 'practiceHub' | 'practice' | 'summary' | 'mastery'
     >('dashboard'),
@@ -813,6 +859,22 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     [syncTick, setSyncTick] = useState(0),
     [localSaveError, setLocalSaveError] = useState(false),
     [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const family = new URLSearchParams(window.location.search).get(
+        'practice',
+      );
+      if (isRecallFamily(family)) {
+        setEntryCategory(family);
+        setTopic(family);
+        setView('practiceHub');
+      } else if (family === 'mixed') {
+        setReviewEntry(true);
+        setView('practiceHub');
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const started = useRef(0),
     sessionStarted = useRef(0),
     sessionKey = useRef(''),
@@ -1038,6 +1100,14 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     advanceAction.current = null;
     action?.();
   }
+  useEffect(() => {
+    if (view !== 'practice') return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [view]);
   function sessionDeck(sessionMode: Mode, source: Fact[]) {
     const ordered = createDeck(sessionMode, source, stats);
     if (!sessionTargets.current.size) return ordered;
@@ -1052,6 +1122,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     ];
   }
   function showFact(nextFact: Fact) {
+    if (nextFact.strategy) setInput('typed');
     answerLocked.current = false;
     setFact(nextFact);
     setOpts(choices(nextFact));
@@ -1127,6 +1198,16 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       if (category === 'tables')
         return (
           candidate.topic === 'tables' &&
+          (direction === 'all' ||
+            candidate.reverse === (direction === 'reverse'))
+        );
+      if (
+        category === 'squares' ||
+        category === 'cubes' ||
+        category === 'consecutive'
+      )
+        return (
+          candidate.topic === category &&
           (direction === 'all' ||
             candidate.reverse === (direction === 'reverse'))
         );
@@ -1397,7 +1478,13 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
         dark={dark}
         setDark={setDark}
         view={view}
-        setView={setView}
+        setView={(nextView) => {
+          if (nextView === 'practiceHub') {
+            setEntryCategory(null);
+            setReviewEntry(false);
+          }
+          setView(nextView);
+        }}
         onMixed={() => start('mixed')}
         onProfile={() => setProfileOpen(true)}
         attempts={history.length}
@@ -1431,13 +1518,21 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           rows={topicRows}
           start={start}
           retry={retryFacts}
-          openPractice={() => setView('practiceHub')}
+          openPractice={() => {
+            setEntryCategory(null);
+            setReviewEntry(false);
+            setView('practiceHub');
+          }}
         />
       )}{' '}
       {view === 'practiceHub' && (
         <PracticeHub
           start={start}
           startCategory={startCategory}
+          initialCategory={entryCategory}
+          reviewEntry={reviewEntry}
+          ready={ready}
+          grokTest={grokTest}
           stats={stats}
           topic={topic}
           setTopic={setTopic}
@@ -1653,10 +1748,16 @@ function ProfilePanel({
         ) : (
           <p>
             Your progress is stored on this device.{' '}
-            <Link href={signInHref} target="_top">
-              {signInLabel}
-            </Link>{' '}
-            to keep it across devices.
+            {onVercel && !cloudAuthReady ? (
+              'Account sign-in and cloud sync are not available in this preview.'
+            ) : (
+              <>
+                <Link href={signInHref} target="_top">
+                  {signInLabel}
+                </Link>{' '}
+                to keep it across devices.
+              </>
+            )}
           </p>
         )}
         <div className="preference-row">
@@ -2031,6 +2132,10 @@ function HomeDashboard({
 }
 
 function PracticeHub({
+  initialCategory,
+  reviewEntry,
+  ready,
+  grokTest,
   start,
   startCategory,
   stats,
@@ -2039,6 +2144,10 @@ function PracticeHub({
   group,
   setGroup,
 }: {
+  initialCategory: PracticeCategory | null;
+  reviewEntry: boolean;
+  ready: boolean;
+  grokTest: boolean;
   start: (m: Mode) => void;
   startCategory: (
     category: PracticeCategory,
@@ -2051,11 +2160,14 @@ function PracticeHub({
   group: string;
   setGroup: (g: string) => void;
 }) {
-  const [selected, setSelected] = useState<PracticeCategory | null>(null);
+  const selected = initialCategory;
   const categoryFacts = (key: PracticeCategory) =>
     FACTS.filter((fact) =>
-      key === 'tables'
-        ? fact.topic === 'tables'
+      key === 'tables' ||
+      key === 'squares' ||
+      key === 'cubes' ||
+      key === 'consecutive'
+        ? fact.topic === key
         : key === 'powers'
           ? fact.topic === 'squares' || fact.topic === 'cubes'
           : fact.topic === 'fractions' &&
@@ -2078,6 +2190,24 @@ function PracticeHub({
     PracticeCategory,
     { title: string; copy: string; icon: typeof Brain; color: string }
   > = {
+    squares: {
+      title: 'Squares',
+      copy: 'Squares up to 35² and roots in both directions.',
+      icon: Brain,
+      color: 'amber',
+    },
+    cubes: {
+      title: 'Cubes',
+      copy: 'Cubes up to 15³ and roots in both directions.',
+      icon: Brain,
+      color: 'green',
+    },
+    consecutive: {
+      title: 'Consecutive products',
+      copy: 'Neighbouring-number products from 11 × 12 to 19 × 20.',
+      icon: Zap,
+      color: 'violet',
+    },
     fractions: {
       title: 'Fractions',
       copy: 'Recognise and reconstruct simplified fraction forms.',
@@ -2110,12 +2240,40 @@ function PracticeHub({
     ),
   ];
 
+  if (reviewEntry)
+    return (
+      <section className="page practice-hub">
+        <Link href={grokTest ? '/practice?grok-test=1' : '/practice'}>
+          ← Practice home
+        </Link>
+        <div className="masteryTitle">
+          <span>
+            <small>MIXED / DUE REVIEWS</small>
+            <h1>Review across families</h1>
+            <p>
+              Recall facts and mental operations share this review. Due and weak
+              items come first; new items fill the gaps.
+            </p>
+          </span>
+        </div>
+        <p>
+          Answer on this device. Focus on accuracy and end the review whenever
+          you need.
+        </p>
+        <Button disabled={!ready} onClick={() => start('mixed')}>
+          {ready ? 'Start mixed review' : 'Loading saved progress…'}
+        </Button>
+      </section>
+    );
+  if (!selected) return <PracticeHome embedded />;
   if (selected) {
     const meta = categoryMeta[selected];
     return (
       <div className="page practice-hub category-page">
         <nav className="practice-breadcrumb" aria-label="Breadcrumb">
-          <button onClick={() => setSelected(null)}>Practice</button>
+          <Link href={grokTest ? '/practice?grok-test=1' : '/practice'}>
+            Practice
+          </Link>
           <ChevronRight />
           <span aria-current="page">{meta.title}</span>
         </nav>
@@ -2213,99 +2371,9 @@ function PracticeHub({
     );
   }
 
-  return (
-    <div className="page practice-hub practice-hub-v4">
-      <div className="masteryTitle">
-        <span>
-          <small>PRACTICE HUB</small>
-          <h1>Train one recall domain at a time</h1>
-          <p>
-            Large categories first. Choose the direction and session format on
-            the next screen.
-          </p>
-        </span>
-      </div>
-      <section className="domain-grid" aria-label="Practice categories">
-        {(Object.keys(categoryMeta) as PracticeCategory[]).map((key) => {
-          const meta = categoryMeta[key];
-          const score = categoryScore(key);
-          const needsWork =
-            categoryFacts(key).some((fact) => stats[fact.id]?.attempts) &&
-            score < 50;
-          const Icon = meta.icon;
-          return (
-            <button
-              key={key}
-              className={needsWork ? 'needs-work' : ''}
-              onClick={() => setSelected(key)}
-              aria-label={
-                meta.title +
-                ', ' +
-                (score ? score + ' percent mastery' : 'not yet ranked')
-              }
-            >
-              <header>
-                <i className={meta.color}>
-                  <Icon />
-                </i>
-                {needsWork && <em>NEEDS WORK</em>}
-              </header>
-              <span>
-                <b>{meta.title}</b>
-                <small>{meta.copy}</small>
-              </span>
-              <footer>
-                <span>
-                  <small>MASTERY</small>
-                  <strong>{score ? score + '%' : 'Unranked'}</strong>
-                </span>
-                <ChevronRight />
-              </footer>
-            </button>
-          );
-        })}
-      </section>
-      <section className="mixed-review-row">
-        <span>
-          <i>
-            <Zap />
-          </i>
-          <span>
-            <small>CROSS-CATEGORY TRAINING</small>
-            <h2>Mixed review & timed practice</h2>
-            <p>
-              Let the scheduler combine due, weak, reverse, and strong-review
-              facts.
-            </p>
-          </span>
-        </span>
-        <div>
-          <Button variant="outline" onClick={() => start('sprint')}>
-            1-minute sprint
-          </Button>
-          <Button onClick={() => start('mixed')}>
-            Start mixed review <ChevronRight />
-          </Button>
-        </div>
-      </section>
-      <details className="session-library panel">
-        <summary>More session formats</summary>
-        <p>
-          These cross-category formats are kept behind one
-          progressive-disclosure control so the main hub stays easy to scan.
-        </p>
-        <div>
-          <button onClick={() => start('learn')}>Learn</button>
-          <button onClick={() => start('weak')}>Weak areas</button>
-          <button onClick={() => start('random')}>Random practice</button>
-          <button onClick={() => start('test10')}>10-question test</button>
-          <button onClick={() => start('test25')}>25-question test</button>
-          <button onClick={() => start('test50')}>50-question test</button>
-        </div>
-      </details>
-    </div>
-  );
+  return null;
 }
+
 function Heading({
   over,
   title,
@@ -2428,6 +2496,7 @@ function Practice({
             <button
               className={input === 'mcq' ? 'active' : ''}
               onClick={() => setInput('mcq')}
+              disabled={!!fact.strategy}
             >
               Choices
             </button>
@@ -2442,7 +2511,13 @@ function Practice({
         <div
           className={`qcard ${result ? (result.ok ? 'answer-correct' : 'answer-review-needed') : ''}`}
         >
-          <small>{fact.reverse ? 'REVERSE RECALL' : 'DIRECT RECALL'}</small>
+          <small>
+            {fact.strategy
+              ? 'MENTAL OPERATION'
+              : fact.reverse
+                ? 'REVERSE RECALL'
+                : 'DIRECT RECALL'}
+          </small>
           <h1>
             <MathText value={fact.q} />
           </h1>
@@ -2493,8 +2568,13 @@ function Practice({
               <Button type="submit" disabled={!!result || !answer.trim()}>
                 Check answer
               </Button>
-              {fact.a.includes('/') && (
-                <div className="fraction-keypad" aria-label="Fraction keypad">
+              {(fact.a.includes('/') || fact.strategy) && (
+                <div
+                  className="fraction-keypad"
+                  aria-label={
+                    fact.strategy ? 'Number keypad' : 'Fraction keypad'
+                  }
+                >
                   {[
                     '1',
                     '2',
@@ -2506,8 +2586,7 @@ function Practice({
                     '8',
                     '9',
                     '0',
-                    '/',
-                    'space',
+                    ...(fact.strategy ? [] : ['/', 'space']),
                   ].map((key) => (
                     <button
                       type="button"
@@ -2620,6 +2699,9 @@ function Practice({
   );
 }
 function strategyFor(item: Try) {
+  const operation = FACTS.find((fact) => fact.id === item.id && fact.strategy);
+  if (operation?.strategy)
+    return { title: 'Hold it in your head', text: operation.strategy };
   if (item.topic === 'fractions') {
     const mixed = `${item.q} ${item.a}`.match(/(\d+)\s+(\d+)\/(\d+)/);
     if (mixed) {

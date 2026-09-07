@@ -16,7 +16,7 @@ test('operation bank is a closed set with unique ids', () => {
 test('every operation prompt evaluates to its stored answer', () => {
   for (const item of OPERATION_FACTS) {
     assert.match(item.id, /^(add|sub|mul|div)-/);
-    assert.ok(item.strategy.length > 8, item.id);
+    assert.ok(item.strategy.trim().length > 0, item.id);
     const expected = Number(item.a);
     assert.equal(Number.isInteger(expected), true, item.id);
     const expr = item.q

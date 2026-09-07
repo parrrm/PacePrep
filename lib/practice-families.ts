@@ -3,8 +3,9 @@
 export const RECALL_FACT_FAMILY_IDS = [
   'fractions',
   'tables',
-  'powers',
-  'percentages',
+  'squares',
+  'cubes',
+  'consecutive',
 ] as const;
 
 export const OPERATION_FAMILY_IDS = [
@@ -52,14 +53,41 @@ export const PRACTICE_HUB_COPY = {
   recallEyebrow: 'RECALL FACTS',
   recallTitle: 'Automatic pairs and tables',
   recallIntro:
-    'Fractions, percentages, tables, squares, and cubes. Each direction is its own fact.',
+    'Fractions ↔ percentages, tables, squares, cubes, and consecutive products. Practise each direction separately.',
   opsEyebrow: 'MENTAL OPERATIONS',
   opsTitle: 'Add, subtract, multiply, divide in your head',
   opsIntro:
     'Procedure fluency, not written algorithms. Type the answer; a strategy line appears after you check.',
   opsReadyLabel: 'Open',
   mixedEyebrow: 'CROSS-CATEGORY TRAINING',
-  mixedTitle: 'Mixed review & timed practice',
+  mixedTitle: 'Mixed / due reviews',
   mixedIntro:
-    'Let the scheduler combine due, weak, reverse, and strong-review facts — including mental operations.',
+    'Review recall facts and mental operations together, with due and weak items prioritised.',
 } as const;
+
+export function isRecallFamily(
+  value: string | null,
+): value is RecallFactFamilyId {
+  return RECALL_FACT_FAMILY_IDS.some((id) => id === value);
+}
+
+export function isOperationFamily(
+  value: string | null,
+): value is OperationFamilyId {
+  return OPERATION_FAMILY_IDS.some((id) => id === value);
+}
+
+/** Keep family selection in the URL so reload and browser Back preserve it. */
+export function practiceHref(
+  family: PracticeFamilyId | 'mixed',
+  isolated = false,
+) {
+  const params = new URLSearchParams();
+  if (isolated) params.set('grok-test', '1');
+  if (isOperationFamily(family)) {
+    params.set('family', family);
+    return `/ops?${params}`;
+  }
+  params.set('practice', family);
+  return `/?${params}`;
+}

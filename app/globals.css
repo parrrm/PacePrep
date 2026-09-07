@@ -4950,7 +4950,7 @@ main > :not(.math-atmosphere) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
-.domain-grid > button {
+.domain-grid > :is(button, a.practice-family-card) {
   min-height: 228px;
   display: flex;
   flex-direction: column;
@@ -4968,12 +4968,12 @@ main > :not(.math-atmosphere) {
     border-color 0.16s ease-out,
     box-shadow 0.16s ease-out;
 }
-.domain-grid > button:hover {
+.domain-grid > :is(button, a.practice-family-card):hover {
   transform: translateY(-2px) scale(1.01);
   border: 2px solid #2457d6;
   box-shadow: 0 16px 34px rgba(16, 42, 67, 0.12);
 }
-.domain-grid > button.needs-work {
+.domain-grid > :is(button, a.practice-family-card).needs-work {
   border-color: #e077bb;
   background: #fff3fb;
 }
@@ -5021,11 +5021,11 @@ main > :not(.math-atmosphere) {
   font-weight: 850;
   letter-spacing: 0.08em;
 }
-.domain-grid > button > span b {
+.domain-grid > :is(button, a.practice-family-card) > span b {
   display: block;
   font-size: 24px;
 }
-.domain-grid > button > span small {
+.domain-grid > :is(button, a.practice-family-card) > span small {
   display: block;
   max-width: 390px;
   margin-top: 7px;
@@ -5287,13 +5287,13 @@ main > :not(.math-atmosphere) {
 .dark .dashboard-trends small,
 .dark .category-mode-grid em,
 .dark .category-mode-grid small,
-.dark .domain-grid > button > span small,
+.dark .domain-grid > :is(button, a.practice-family-card) > span small,
 .dark .answer-format-hint {
   color: #b7c5d0 !important;
 }
 .dark .streak-hero,
 .dark .dashboard-trends article,
-.dark .domain-grid > button,
+.dark .domain-grid > :is(button, a.practice-family-card),
 .dark .category-mode-grid > button {
   border-color: #364959;
   background: #14293a;
@@ -5380,7 +5380,7 @@ main > :not(.math-atmosphere) {
     align-items: stretch;
     flex-direction: column;
   }
-  .domain-grid > button {
+  .domain-grid > :is(button, a.practice-family-card) {
     min-height: 210px;
     padding: 20px;
   }

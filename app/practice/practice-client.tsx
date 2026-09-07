@@ -4,7 +4,6 @@ import {
   BookOpen,
   Brain,
   ChevronRight,
-  Clock3,
   Divide,
   Grid3X3,
   Minus,
@@ -18,37 +17,47 @@ import {
   OPERATION_FAMILIES,
   PRACTICE_HUB_COPY,
   type OperationFamilyId,
+  practiceHref,
 } from '@/lib/practice-families';
-import { operationsByTopic } from '@/lib/mental-ops';
+import PracticeNavigation, {
+  useIsolatedPractice,
+} from '@/app/practice-navigation';
 
 const RECALL = [
   {
-    href: '/',
-    title: 'Fractions',
-    copy: 'Recognise and reconstruct simplified fraction forms.',
+    family: 'fractions',
+    title: 'Fractions ↔ percentages',
+    copy: 'Recall banking-exam fraction and percentage pairs in both directions.',
     icon: BookOpen,
     color: 'violet',
   },
   {
-    href: '/',
+    family: 'tables',
     title: 'Tables',
-    copy: 'Tables 12-30 with multiplication and division recall.',
+    copy: 'Recall tables 12–30 and their reverse division facts.',
     icon: Grid3X3,
     color: 'blue',
   },
   {
-    href: '/',
-    title: 'Squares and cubes',
-    copy: 'Roots and powers in both directions.',
+    family: 'squares',
+    title: 'Squares',
+    copy: 'Recall squares up to 35² and identify their roots.',
     icon: Brain,
     color: 'amber',
   },
   {
-    href: '/',
-    title: 'Percentages',
-    copy: 'Exact banking-exam fraction-percentage pairs.',
-    icon: Zap,
+    family: 'cubes',
+    title: 'Cubes',
+    copy: 'Recall cubes up to 15³ and identify their roots.',
+    icon: Brain,
     color: 'green',
+  },
+  {
+    family: 'consecutive',
+    title: 'Consecutive products',
+    copy: 'Recall neighbouring-number products from 11 × 12 to 19 × 20.',
+    icon: Zap,
+    color: 'violet',
   },
 ] as const;
 
@@ -59,13 +68,20 @@ const ICONS = {
   division: Divide,
 } as const;
 
-export default function PracticeHubPage() {
+export default function PracticeHubPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
+  const isolated = useIsolatedPractice();
+  const Container = embedded ? 'div' : 'main';
   return (
-    <main className="page practice-hub practice-hub-v4">
+    <Container className="page practice-hub practice-hub-v4">
+      {!embedded && <PracticeNavigation />}
       <div className="masteryTitle">
         <span>
           <small>{PRACTICE_HUB_COPY.eyebrow}</small>
-          <h1>{PRACTICE_HUB_COPY.title}</h1>
+          <h1>Practice</h1>
           <p>{PRACTICE_HUB_COPY.intro}</p>
         </span>
       </div>
@@ -80,25 +96,28 @@ export default function PracticeHubPage() {
           {RECALL.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.title} href={item.href}>
-                <button type="button" aria-label={item.title}>
-                  <header>
-                    <i className={item.color}>
-                      <Icon />
-                    </i>
-                  </header>
+              <Link
+                key={item.title}
+                href={practiceHref(item.family, isolated)}
+                className="practice-family-card"
+                aria-label={item.title}
+              >
+                <header>
+                  <i className={item.color}>
+                    <Icon />
+                  </i>
+                </header>
+                <span>
+                  <b>{item.title}</b>
+                  <small>{item.copy}</small>
+                </span>
+                <footer>
                   <span>
-                    <b>{item.title}</b>
-                    <small>{item.copy}</small>
+                    <small>TRAINER</small>
+                    <strong>Open</strong>
                   </span>
-                  <footer>
-                    <span>
-                      <small>TRAINER</small>
-                      <strong>Open</strong>
-                    </span>
-                    <ChevronRight />
-                  </footer>
-                </button>
+                  <ChevronRight />
+                </footer>
               </Link>
             );
           })}
@@ -111,13 +130,21 @@ export default function PracticeHubPage() {
           <h2 id="mental-ops-title">{PRACTICE_HUB_COPY.opsTitle}</h2>
           <p>{PRACTICE_HUB_COPY.opsIntro}</p>
         </header>
-        <section className="domain-grid" aria-label="Mental operation categories">
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map((key) => {
-            const meta = OPERATION_FAMILIES[key];
-            const Icon = ICONS[key];
-            return (
-              <Link key={key} href="/ops">
-                <button type="button" aria-label={meta.title + ' mental operations'}>
+        <section
+          className="domain-grid"
+          aria-label="Mental operation categories"
+        >
+          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+            (key) => {
+              const meta = OPERATION_FAMILIES[key];
+              const Icon = ICONS[key];
+              return (
+                <Link
+                  key={key}
+                  href={practiceHref(key, isolated)}
+                  className="practice-family-card"
+                  aria-label={meta.title + ' mental operations'}
+                >
                   <header>
                     <i className={meta.color}>
                       <Icon />
@@ -130,15 +157,15 @@ export default function PracticeHubPage() {
                   </span>
                   <footer>
                     <span>
-                      <small>BANK</small>
-                      <strong>{operationsByTopic(key).length} facts</strong>
+                      <small>IN YOUR HEAD</small>
+                      <strong>Choose a drill</strong>
                     </span>
                     <ChevronRight />
                   </footer>
-                </button>
-              </Link>
-            );
-          })}
+                </Link>
+              );
+            },
+          )}
         </section>
       </section>
 
@@ -154,14 +181,22 @@ export default function PracticeHubPage() {
           </span>
         </span>
         <div>
-          <Link href="/">Open recall trainer</Link>
-          <Link href="/ops">Open operations</Link>
+          <Link href={practiceHref('mixed', isolated)}>
+            Open mixed / due reviews
+          </Link>
         </div>
       </section>
 
-      <p>
-        <Link href="/">Back to PacePrep home</Link>
+      <p className="practice-scope">
+        Guest progress stays on this device. PacePrep trains arithmetic recall
+        and mental operations; it is not a full quant syllabus, a mock test, or
+        a score guarantee.
       </p>
-    </main>
+      <p>
+        <Link href={isolated ? '/?grok-test=1' : '/'}>
+          Back to PacePrep home
+        </Link>
+      </p>
+    </Container>
   );
 }

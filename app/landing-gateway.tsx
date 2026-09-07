@@ -7,7 +7,8 @@ import BaselineDiagnostic from './baseline-diagnostic';
 import { type BaselineAttempt } from '@/lib/baseline';
 import { InstallButton } from './pwa-provider';
 import { progressRequest } from '@/lib/auth-client';
-import { signInHref } from '@/lib/hosting';
+import { signInHref, cloudAuthReady, onVercel } from '@/lib/hosting';
+import { isRecallFamily } from '@/lib/practice-families';
 import {
   BookOpen,
   Check,
@@ -50,6 +51,18 @@ export default function LandingGateway() {
           setGrokTest(true);
           setEntered(true);
         }
+      }, 0);
+      return () => {
+        active = false;
+        window.clearTimeout(timer);
+      };
+    }
+    const practice = new URLSearchParams(window.location.search).get(
+      'practice',
+    );
+    if (isRecallFamily(practice) || practice === 'mixed') {
+      const timer = window.setTimeout(() => {
+        if (active) setEntered(true);
       }, 0);
       return () => {
         active = false;
@@ -106,7 +119,9 @@ export default function LandingGateway() {
         </span>
         <div>
           <InstallButton compact />
-          <button onClick={() => setEntryIntent('signin')}>Sign in</button>
+          {(!onVercel || cloudAuthReady) && (
+            <button onClick={() => setEntryIntent('signin')}>Sign in</button>
+          )}
         </div>
       </header>
 
@@ -148,9 +163,6 @@ export default function LandingGateway() {
             {' · '}
             <Link href="/ops">Mental + − × ÷ drills</Link>
           </p>
-          <small className="landing-price">
-            Free testing preview · no card required · no paid features today
-          </small>
           <div className="landing-trust">
             <span>
               <Check /> Guest practice without an account
@@ -159,7 +171,7 @@ export default function LandingGateway() {
               <Check /> No account needed for the baseline
             </span>
             <span>
-              <Check /> Guest work merges when you later sign in
+              <Check /> Progress is saved on this device
             </span>
           </div>
         </div>
@@ -172,7 +184,7 @@ export default function LandingGateway() {
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
-        <a href="/practice" className="landing-path-link">
+        <Link href="/practice" className="landing-path-link">
           <article>
             <BookOpen />
             <span>
@@ -180,18 +192,19 @@ export default function LandingGateway() {
               <small>Recall facts and in-head operations in one place.</small>
             </span>
           </article>
-        </a>
-        <a href="/ops" className="landing-path-link">
+        </Link>
+        <Link href="/ops" className="landing-path-link">
           <article>
             <Target />
             <span>
               <b>Train operations</b>
               <small>
-                Addition, subtraction, multiplication, and division without paper.
+                Addition, subtraction, multiplication, and division without
+                paper.
               </small>
             </span>
           </article>
-        </a>
+        </Link>
         <article>
           <Clock3 />
           <span>
@@ -208,7 +221,6 @@ export default function LandingGateway() {
           <Link href="/about">About</Link>
           <Link href="/practice">Practice</Link>
           <Link href="/ops">Operations</Link>
-          <Link href="/pricing">Pricing</Link>
           <Link href="/faq">FAQ</Link>
           <Link href="/install">Install app</Link>
           <Link href="/privacy">Privacy</Link>
@@ -216,7 +228,9 @@ export default function LandingGateway() {
           <Link href="/contact">Contact</Link>
         </nav>
         <span>
-          Guest mode is device-local · signed-in mode syncs learning progress
+          {onVercel && !cloudAuthReady
+            ? 'Guest progress stays on this device. Account sign-in and cloud sync are not available in this preview.'
+            : 'Guest progress stays on this device.'}
         </span>
         <small>
           For adults aged 18+. By continuing, you agree to the Terms and Privacy

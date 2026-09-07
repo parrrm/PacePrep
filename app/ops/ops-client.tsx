@@ -1,10 +1,9 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronRight,
-  Clock3,
   Divide,
   Minus,
   Play,
@@ -20,7 +19,11 @@ import {
   OPERATION_FAMILIES,
   PRACTICE_HUB_COPY,
   type OperationFamilyId,
+  isOperationFamily,
 } from '@/lib/practice-families';
+import PracticeNavigation, {
+  useIsolatedPractice,
+} from '@/app/practice-navigation';
 import { operationsByTopic, type OpFact } from '@/lib/mental-ops';
 import {
   completeOperationSession,
@@ -55,6 +58,7 @@ const ICONS = {
 } as const;
 
 export default function OpsPage() {
+  const isolated = useIsolatedPractice();
   const [family, setFamily] = useState<OperationFamilyId | null>(null);
   const [limit, setLimit] = useState(10);
   const [sprint, setSprint] = useState(false);
@@ -70,8 +74,31 @@ export default function OpsPage() {
   const sessionId = useRef('');
   const counted = useRef(false);
 
+  useEffect(() => {
+    const selected = new URLSearchParams(window.location.search).get('family');
+    const timer = window.setTimeout(() => {
+      if (isOperationFamily(selected)) setFamily(selected);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!deck.length) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [deck.length]);
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearInterval(timer.current);
+    },
+    [],
+  );
+
   const fact = deck[index];
-  const done = (!fact && log.length > 0) || (sprint && left === 0 && log.length > 0);
+  const done =
+    (!fact && log.length > 0) || (sprint && left === 0 && log.length > 0);
 
   function begin(next: OperationFamilyId, mode: 'ten' | 'sprint') {
     const pool = shuffle(operationsByTopic(next));
@@ -127,12 +154,6 @@ export default function OpsPage() {
     setResult(item);
   }
 
-  function markSessionComplete() {
-    if (counted.current || !log.length) return;
-    counted.current = true;
-    completeOperationSession();
-  }
-
   function submit() {
     if (!fact || result) return;
     const raw = answer.trim();
@@ -170,7 +191,9 @@ export default function OpsPage() {
 
   const scored = log.filter((item) => !item.skipped);
   const accuracy = scored.length
-    ? Math.round((scored.filter((item) => item.correct).length / scored.length) * 100)
+    ? Math.round(
+        (scored.filter((item) => item.correct).length / scored.length) * 100,
+      )
     : 0;
   const average =
     scored.length > 0
@@ -186,18 +209,25 @@ export default function OpsPage() {
     [log],
   );
 
-  if (done || (sprint && left === 0 && log.length)) {
+  useEffect(() => {
+    if (!done) return;
     if (timer.current) window.clearInterval(timer.current);
-    markSessionComplete();
+    if (counted.current || !log.length) return;
+    counted.current = true;
+    completeOperationSession();
+  }, [done, log.length]);
+
+  if (done || (sprint && left === 0 && log.length)) {
     return (
       <main className="page practice-hub">
+        <PracticeNavigation />
         <div className="masteryTitle">
           <span>
             <small>MENTAL OPERATIONS</small>
             <h1>Session review</h1>
             <p>
-              {scored.length} answered · {accuracy}% accuracy · {average.toFixed(1)}s
-              average
+              {scored.length} answered · {accuracy}% accuracy ·{' '}
+              {average.toFixed(1)}s average
             </p>
           </span>
         </div>
@@ -216,11 +246,13 @@ export default function OpsPage() {
             <p>No misses. Move to another operation or a mixed recall set.</p>
           )}
           <div>
-            <Button onClick={() => family && begin(family, 'ten')}>Drill again</Button>
+            <Button onClick={() => family && begin(family, 'ten')}>
+              Drill again
+            </Button>
             <Button variant="outline" onClick={() => setFamily(null)}>
               Back to operations
             </Button>
-            <Link href="/">Home</Link>
+            <Link href={isolated ? '/?grok-test=1' : '/'}>Home</Link>
           </div>
         </section>
       </main>
@@ -230,6 +262,7 @@ export default function OpsPage() {
   if (!family) {
     return (
       <main className="page practice-hub practice-hub-v4">
+        <PracticeNavigation />
         <div className="masteryTitle">
           <span>
             <small>{PRACTICE_HUB_COPY.opsEyebrow}</small>
@@ -237,35 +270,46 @@ export default function OpsPage() {
             <p>{PRACTICE_HUB_COPY.opsIntro}</p>
           </span>
         </div>
-        <section className="domain-grid" aria-label="Mental operation categories">
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map((key) => {
-            const meta = OPERATION_FAMILIES[key];
-            const Icon = ICONS[key];
-            return (
-              <button key={key} onClick={() => setFamily(key)} aria-label={meta.title}>
-                <header>
-                  <i className={meta.color}>
-                    <Icon />
-                  </i>
-                  <em>OPEN</em>
-                </header>
-                <span>
-                  <b>{meta.title}</b>
-                  <small>{meta.copy}</small>
-                </span>
-                <footer>
+        <section
+          className="domain-grid"
+          aria-label="Mental operation categories"
+        >
+          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+            (key) => {
+              const meta = OPERATION_FAMILIES[key];
+              const Icon = ICONS[key];
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFamily(key)}
+                  aria-label={meta.title}
+                >
+                  <header>
+                    <i className={meta.color}>
+                      <Icon />
+                    </i>
+                    <em>OPEN</em>
+                  </header>
                   <span>
-                    <small>BANK</small>
-                    <strong>{operationsByTopic(key).length} facts</strong>
+                    <b>{meta.title}</b>
+                    <small>{meta.copy}</small>
                   </span>
-                  <ChevronRight />
-                </footer>
-              </button>
-            );
-          })}
+                  <footer>
+                    <span>
+                      <small>BANK</small>
+                      <strong>{operationsByTopic(key).length} items</strong>
+                    </span>
+                    <ChevronRight />
+                  </footer>
+                </button>
+              );
+            },
+          )}
         </section>
         <p>
-          <Link href="/">← Back to PacePrep home</Link>
+          <Link href={isolated ? '/?grok-test=1' : '/'}>
+            ← Back to PacePrep home
+          </Link>
         </p>
       </main>
     );
@@ -276,10 +320,13 @@ export default function OpsPage() {
     return (
       <main className="page practice-hub category-page">
         <nav className="practice-breadcrumb" aria-label="Breadcrumb">
-          <button onClick={() => setFamily(null)}>Operations</button>
+          <Link href={isolated ? '/practice?grok-test=1' : '/practice'}>
+            Practice
+          </Link>
           <ChevronRight />
           <span aria-current="page">{meta.title}</span>
         </nav>
+        <PracticeNavigation />
         <div className="masteryTitle">
           <span>
             <small>{meta.title.toUpperCase()}</small>
@@ -299,17 +346,6 @@ export default function OpsPage() {
             </span>
             <ChevronRight />
           </button>
-          <button onClick={() => begin(family, 'sprint')}>
-            <i className={meta.color}>
-              <Clock3 />
-            </i>
-            <span>
-              <small>60 SECONDS</small>
-              <b>Timed sprint</b>
-              <em>Session clock only. Keep the work in your head.</em>
-            </span>
-            <ChevronRight />
-          </button>
         </section>
       </main>
     );
@@ -318,7 +354,7 @@ export default function OpsPage() {
   return (
     <div className="practicePage">
       <header className="practiceHead">
-        <Link href="/" className="brand">
+        <Link href={isolated ? '/?grok-test=1' : '/'} className="brand">
           <b>
             <Zap />
           </b>
@@ -343,7 +379,8 @@ export default function OpsPage() {
         <div className="quizline">
           <small>{meta.title}</small>
           <b className="session-score">
-            <Check size={15} /> {log.filter((item) => item.correct).length} correct
+            <Check size={15} /> {log.filter((item) => item.correct).length}{' '}
+            correct
           </b>
           <span>
             <Target size={14} /> Type
@@ -385,7 +422,11 @@ export default function OpsPage() {
                   {key}
                 </button>
               ))}
-              <button type="button" disabled={!!result} onClick={() => setAnswer(answer.slice(0, -1))}>
+              <button
+                type="button"
+                disabled={!!result}
+                onClick={() => setAnswer(answer.slice(0, -1))}
+              >
                 ⌫
               </button>
             </div>

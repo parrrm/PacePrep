@@ -5,7 +5,7 @@
   margin-bottom: 14px;
 }
 .practice-family > header small {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--primary);
   font-weight: 800;
@@ -17,7 +17,7 @@
 }
 .practice-family > header p {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   max-width: 62ch;
 }
@@ -30,7 +30,7 @@
   color: var(--primary);
 }
 .coming-next-pill {
-  font-size: 13px !important;
+  font-size: 14px !important;
   font-style: normal !important;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -54,4 +54,50 @@
   .practice-family > header h2 {
     font-size: 16px;
   }
+}
+
+.practice-family-card {
+  text-decoration: none;
+}
+.practice-family-card:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+}
+.practice-family-card > span small {
+  font-size: 14px !important;
+}
+.practice-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.practice-navigation a,
+.practice-navigation button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.practice-navigation button {
+  padding: 8px 12px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.practice-scope {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.fraction-keypad button {
+  min-height: 48px;
+  font-size: 16px;
+}
+.fraction-keypad[aria-label='Number keypad'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }

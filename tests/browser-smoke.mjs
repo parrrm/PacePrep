@@ -90,8 +90,7 @@ try {
   );
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
-  await page.locator('.domain-grid').waitFor();
-  await page.locator('.domain-grid > button').first().click();
+  await page.getByRole('link', { name: 'Fractions ↔ percentages', exact: true }).click();
   await page.getByRole('button', { name: /10-question benchmark/ }).click();
   await page.locator('.qcard').waitFor();
   await page.getByRole('button', { name: 'Type', exact: true }).click();
@@ -126,9 +125,8 @@ try {
     true,
     'Mobile hub must not overflow',
   );
-  await page
-    .getByRole('button', { name: '1-minute sprint', exact: true })
-    .click();
+  await page.getByRole('link', { name: 'Tables', exact: true }).click();
+  await page.getByRole('button', { name: /Timed sprint/ }).click();
   await page.getByRole('textbox', { name: 'Your answer' }).fill('0');
   await page.getByRole('button', { name: 'Check answer' }).click();
   await page.getByRole('button', { name: 'End session', exact: true }).click();
@@ -152,8 +150,8 @@ try {
     await phone
       .getByRole('button', { name: 'Sign in', exact: true })
       .isVisible(),
-    true,
-    'Sign-in must remain visible on mobile',
+    false,
+    'Unavailable cloud sign-in must be hidden on mobile',
   );
   assert.equal(
     await phone.evaluate(

@@ -38,19 +38,30 @@ type SavedProgress = {
   input?: 'mcq' | 'typed';
 };
 
+function operationStorageKey() {
+  return new URLSearchParams(window.location.search).get('grok-test') === '1'
+    ? 'paceprep-grok-test'
+    : progressStorageKey(null);
+}
+
 function readProgress(): SavedProgress {
   try {
-    return JSON.parse(localStorage.getItem(progressStorageKey(null)) || '{}');
+    return JSON.parse(localStorage.getItem(operationStorageKey()) || '{}');
   } catch {
     return {};
   }
 }
 
 function writeProgress(next: SavedProgress) {
-  localStorage.setItem(progressStorageKey(null), JSON.stringify(next));
+  localStorage.setItem(operationStorageKey(), JSON.stringify(next));
 }
 
-function updateStat(old: Stat | undefined, correct: boolean, ms: number, now: number): Stat {
+function updateStat(
+  old: Stat | undefined,
+  correct: boolean,
+  ms: number,
+  now: number,
+): Stat {
   const current = old ?? {
     attempts: 0,
     correct: 0,
@@ -105,8 +116,13 @@ export function recordOperationAttempt(item: {
     sessionId: item.sessionId,
     answerMode: 'typed',
   };
-  const stats = { ...(saved.stats || {}) };
-  stats[item.id] = updateStat(stats[item.id], item.correct && !item.skipped, item.ms, at);
+  const stats = { ...saved.stats };
+  stats[item.id] = updateStat(
+    stats[item.id],
+    item.correct && !item.skipped,
+    item.ms,
+    at,
+  );
   writeProgress({
     ...saved,
     stats,
