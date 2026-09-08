@@ -1,125 +1,82 @@
-import { progressStorageKey } from '@/lib/account-storage';
+import { progressStorageKey } from './account-storage.ts';
+import { updateStat, mergeProgress } from './learning-progress.ts';
+import { isSavedProgress, type SavedProgress, type ProgressAttempt } from './progress-validation.ts';
 
-const DAY_MS = 86_400_000;
-const LEITNER_INTERVALS = [0, 1, 3, 7, 14, 30];
-
-type Stat = {
-  attempts: number;
-  correct: number;
-  total: number;
-  best: number;
-  recent: boolean[];
-  last: number;
-  box?: number;
-  intervalDays?: number;
-  dueAt?: number;
-  lapses?: number;
+export type OperationProgress = {
+  accountId: string | null;
+  record(item: ProgressAttempt): void;
+  complete(): void;
+  flush(): Promise<void>;
 };
 
-type HistoryItem = {
-  id: string;
-  topic: string;
-  q: string;
-  a: string;
-  correct: boolean;
-  skipped?: boolean;
-  raw?: string;
-  ms: number;
-  at: number;
-  sessionId?: string;
-  answerMode?: 'mcq' | 'typed';
-};
-
-type SavedProgress = {
-  stats?: Record<string, Stat>;
-  history?: HistoryItem[];
-  completedSessions?: number;
-  dark?: boolean;
-  input?: 'mcq' | 'typed';
-};
-
-function readProgress(): SavedProgress {
-  try {
-    return JSON.parse(localStorage.getItem(progressStorageKey(null)) || '{}');
-  } catch {
-    return {};
+/** A session stays bound to the identity it opened with, even after sign-out. */
+export function createOperationProgress(
+  accountId: string | null,
+  storage: Pick<Storage, 'getItem' | 'setItem'>,
+  save: (snapshot: SavedProgress) => Promise<void>,
+): OperationProgress {
+  const key = progressStorageKey(accountId);
+  let pending: Promise<void> = Promise.resolve();
+  function read(): SavedProgress {
+    const snapshot: unknown = JSON.parse(storage.getItem(key) || '{}');
+    if (!isSavedProgress(snapshot)) throw new Error('Saved progress needs recovery');
+    return snapshot;
   }
-}
-
-function writeProgress(next: SavedProgress) {
-  localStorage.setItem(progressStorageKey(null), JSON.stringify(next));
-}
-
-function updateStat(old: Stat | undefined, correct: boolean, ms: number, now: number): Stat {
-  const current = old ?? {
-    attempts: 0,
-    correct: 0,
-    total: 0,
-    best: 0,
-    recent: [],
-    last: 0,
-    box: 1,
-    lapses: 0,
-  };
-  const previousBox = current.box ?? 1;
-  const nextBox = correct ? Math.min(5, previousBox + 1) : 1;
-  const intervalDays = correct ? LEITNER_INTERVALS[nextBox] : 0;
+  function write(snapshot: SavedProgress) {
+    storage.setItem(key, JSON.stringify(snapshot));
+    if (accountId) {
+      // Writes are serialized so a slow earlier save cannot replace later work.
+      pending = pending.catch(() => {}).then(() => save(snapshot));
+      void pending.catch(() => {});
+    }
+  }
+  read();
   return {
-    attempts: current.attempts + 1,
-    correct: current.correct + (correct ? 1 : 0),
-    total: current.total + ms,
-    best: current.best ? Math.min(current.best, ms) : ms,
-    recent: [...current.recent.slice(-5), correct],
-    last: now,
-    box: nextBox,
-    intervalDays,
-    dueAt: correct ? now + intervalDays * DAY_MS : now + 10 * 60_000,
-    lapses: (current.lapses ?? 0) + (correct ? 0 : 1),
+    accountId,
+    record(item) {
+      const snapshot = read();
+      write({
+        ...snapshot,
+        stats: { ...snapshot.stats, [item.id]: updateStat(snapshot.stats?.[item.id], item.correct && !item.skipped, item.ms, item.at) },
+        history: [...(snapshot.history || []), item].slice(-1500),
+      });
+    },
+    complete() {
+      const snapshot = read();
+      write({ ...snapshot, completedSessions: (snapshot.completedSessions || 0) + 1 });
+    },
+    flush: () => pending,
   };
 }
 
-export function recordOperationAttempt(item: {
-  id: string;
-  topic: string;
-  q: string;
-  a: string;
-  raw: string;
-  correct: boolean;
-  skipped?: boolean;
-  ms: number;
-  sessionId: string;
-}) {
-  if (typeof window === 'undefined') return;
-  const saved = readProgress();
-  const at = Date.now();
-  const historyItem: HistoryItem = {
-    id: item.id,
-    topic: item.topic,
-    q: item.q,
-    a: item.a,
-    correct: item.correct,
-    skipped: item.skipped,
-    raw: item.raw,
-    ms: item.ms,
-    at,
-    sessionId: item.sessionId,
-    answerMode: 'typed',
-  };
-  const stats = { ...(saved.stats || {}) };
-  stats[item.id] = updateStat(stats[item.id], item.correct && !item.skipped, item.ms, at);
-  writeProgress({
-    ...saved,
-    stats,
-    history: [...(saved.history || []), historyItem].slice(-1500),
-    input: 'typed',
+export async function openOperationProgress(): Promise<OperationProgress> {
+  const { getProgressAccount, progressRequest, prepareAccountStorage } = await import('./auth-client');
+  const accountId = await getProgressAccount();
+  if (accountId) prepareAccountStorage(accountId);
+  const key = progressStorageKey(accountId);
+  const local: unknown = JSON.parse(localStorage.getItem(key) || '{}');
+  if (!isSavedProgress(local)) throw new Error('Saved progress needs recovery');
+  if (accountId) {
+    const response = await progressRequest({}, accountId);
+    if (!response.ok) throw new Error('Cloud progress unavailable');
+    const payload = await response.json() as { user?: {userId?: string}; progress: unknown };
+    if (payload.user?.userId !== accountId || (payload.progress !== null && !isSavedProgress(payload.progress)))
+      throw new Error('Invalid account progress');
+    localStorage.setItem(key, JSON.stringify(mergeProgress(local, payload.progress)));
+  }
+  return createOperationProgress(accountId, localStorage, async (snapshot) => {
+    const response = await progressRequest({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snapshot) }, accountId);
+    if (!response.ok) throw new Error('Cloud sync failed');
   });
 }
 
-export function completeOperationSession() {
-  if (typeof window === 'undefined') return;
-  const saved = readProgress();
-  writeProgress({
-    ...saved,
-    completedSessions: (saved.completedSessions || 0) + 1,
-  });
+export function recordOperationAttempt(
+  item: Omit<ProgressAttempt, 'at' | 'answerMode'>,
+  progress: OperationProgress,
+) {
+  progress.record({ ...item, at: Date.now(), answerMode: 'typed' });
+}
+
+export function completeOperationSession(progress: OperationProgress) {
+  progress.complete();
 }

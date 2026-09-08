@@ -19,12 +19,15 @@ test('every operation prompt evaluates to its stored answer', () => {
     assert.ok(item.strategy.length > 8, item.id);
     const expected = Number(item.a);
     assert.equal(Number.isInteger(expected), true, item.id);
-    const expr = item.q
-      .replace(' = ?', '')
-      .replaceAll('×', '*')
-      .replaceAll('÷', '/')
-      .replaceAll('−', '-');
-    const got = Function(`return (${expr})`)();
+    if (item.q.split('+').length === 3) {
+      const addends = item.q.replace(' = ?', '').split(' + ').map(Number);
+      assert.equal(addends.reduce((a,b) => a+b, 0), expected, item.id);
+      continue;
+    }
+    const match = item.q.match(/^(\d+) ([×÷−+]) (\d+) = \?$/);
+    assert.ok(match, item.q);
+    const a = Number(match[1]), b = Number(match[3]);
+    const got = ({ '×': () => a*b, '÷': () => a/b, '−': () => a-b, '+': () => a+b })[match[2]]();
     assert.equal(got, expected, `${item.q} => ${got}, expected ${expected}`);
   }
 });

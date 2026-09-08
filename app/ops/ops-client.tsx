@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronRight,
@@ -25,7 +25,11 @@ import { operationsByTopic, type OpFact } from '@/lib/mental-ops';
 import {
   completeOperationSession,
   recordOperationAttempt,
+  openOperationProgress,
+  type OperationProgress,
 } from '@/lib/ops-progress';
+
+import { answersMatch } from '@/lib/recall-math';
 
 type Try = {
   id: string;
@@ -66,107 +70,132 @@ export default function OpsPage() {
   const [left, setLeft] = useState<number | null>(null);
   const started = useRef(0);
   const field = useRef<HTMLInputElement>(null);
-  const timer = useRef<number | null>(null);
   const sessionId = useRef('');
   const counted = useRef(false);
+  const locked = useRef(false);
+  const deadline = useRef(0);
+  const attemptCount = useRef(0);
+  const progress = useRef<OperationProgress | null>(null);
+  const [stage, setStage] = useState<'choose' | 'running' | 'done'>('choose');
+  const [loading, setLoading] = useState(true);
+  const [canStart, setCanStart] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const category = new URLSearchParams(window.location.search).get('family');
+
+    void openOperationProgress().then((account) => {
+      if (!active) return;
+      progress.current = account;
+      if (category && Object.hasOwn(OPERATION_FAMILIES, category))
+        setFamily(category as OperationFamilyId);
+      setCanStart(true);
+      setLoading(false);
+    }).catch(() => {
+      if (active) {
+        setSaveError('Your saved progress could not be loaded. Reload to retry before starting a drill.');
+        setLoading(false);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const finish = useCallback(() => {
+    locked.current = true;
+    setStage('done');
+    if (counted.current || !attemptCount.current || !progress.current) return;
+    counted.current = true;
+    try {
+      completeOperationSession(progress.current);
+      void progress.current.flush().catch(() =>
+        setSaveError('Cloud sync could not finish. Your answers are saved on this device. Reopen your dashboard when connected to retry.'));
+    } catch {
+      setSaveError('Progress could not be saved. Keep this session open to review your answers.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (stage !== 'running' || !sprint) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline.current - performance.now()) / 1000));
+      setLeft(remaining);
+      if (!remaining) finish();
+    };
+    const timer = window.setInterval(tick, 200);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [stage, sprint, finish]);
+
+  useEffect(() => {
+    if (stage === 'running' && !result) field.current?.focus();
+  }, [stage, index, result]);
 
   const fact = deck[index];
-  const done = (!fact && log.length > 0) || (sprint && left === 0 && log.length > 0);
 
   function begin(next: OperationFamilyId, mode: 'ten' | 'sprint') {
+    if (!progress.current) return;
     const pool = shuffle(operationsByTopic(next));
-    const nextDeck = mode === 'sprint' ? pool : pool.slice(0, 10);
-    if (timer.current) window.clearInterval(timer.current);
-    sessionId.current = `ops-${Date.now()}`;
+    sessionId.current = `ops-${crypto.randomUUID()}`;
     counted.current = false;
+    locked.current = false;
+    attemptCount.current = 0;
     setFamily(next);
     setSprint(mode === 'sprint');
     setLimit(mode === 'sprint' ? 0 : 10);
-    setDeck(nextDeck);
+    setDeck(mode === 'sprint' ? pool : pool.slice(0, 10));
     setIndex(0);
     setAnswer('');
     setResult(null);
     setLog([]);
     setLeft(mode === 'sprint' ? 60 : null);
     started.current = performance.now();
-    window.setTimeout(() => field.current?.focus(), 30);
-    if (mode === 'sprint') {
-      timer.current = window.setInterval(() => {
-        setLeft((value) => {
-          if (value === null) return value;
-          if (value <= 1) {
-            if (timer.current) window.clearInterval(timer.current);
-            setDeck([]);
-            return 0;
-          }
-          return value - 1;
-        });
-      }, 1000);
-    }
+    deadline.current = started.current + 60_000;
+    setStage('running');
   }
 
-  function finishItem(partial: Omit<Try, 'ms'> & { ms?: number }) {
+  function finishItem(raw: string, skipped = false) {
+    if (stage !== 'running' || !fact || locked.current || !progress.current) return;
+    if (sprint && performance.now() >= deadline.current) return finish();
+    locked.current = true;
     const item: Try = {
-      ...partial,
-      ms: partial.ms ?? performance.now() - started.current,
+      id: fact.id, q: fact.q, a: fact.a, strategy: fact.strategy,
+      raw, skipped, correct: !skipped && answersMatch(raw, fact.a),
+      ms: Math.max(100, performance.now() - started.current),
     };
-    if (family) {
-      recordOperationAttempt({
-        id: item.id,
-        topic: family,
-        q: item.q,
-        a: item.a,
-        raw: item.raw,
-        correct: item.correct,
-        skipped: item.skipped,
-        ms: item.ms,
-        sessionId: sessionId.current,
-      });
-    }
+    attemptCount.current++;
     setLog((current) => [...current, item]);
     setResult(item);
-  }
-
-  function markSessionComplete() {
-    if (counted.current || !log.length) return;
-    counted.current = true;
-    completeOperationSession();
+    try {
+      recordOperationAttempt({ ...item, topic: family!, sessionId: sessionId.current }, progress.current);
+    } catch {
+      setSaveError('This answer could not be saved. Your session review is still available below.');
+    }
   }
 
   function submit() {
-    if (!fact || result) return;
     const raw = answer.trim();
-    if (!raw) return;
-    finishItem({
-      id: fact.id,
-      q: fact.q,
-      a: fact.a,
-      raw,
-      correct: raw === fact.a,
-      strategy: fact.strategy,
-    });
+    if (raw) finishItem(raw);
   }
 
-  function skip() {
-    if (!fact || result) return;
-    finishItem({
-      id: fact.id,
-      q: fact.q,
-      a: fact.a,
-      raw: '',
-      correct: false,
-      skipped: true,
-      strategy: fact.strategy,
-    });
-  }
+  function skip() { finishItem('', true); }
 
   function goNext() {
+    if (stage !== 'running' || !result) return;
+    if (index + 1 >= deck.length || (sprint && performance.now() >= deadline.current)) return finish();
+    locked.current = false;
     setAnswer('');
     setResult(null);
     started.current = performance.now();
     setIndex((value) => value + 1);
-    window.setTimeout(() => field.current?.focus(), 20);
   }
+
+  const status = loading
+    ? <output>Loading your progress…</output>
+    : saveError ? <p role="alert" className="operation-save-error">{saveError}</p> : null;
 
   const scored = log.filter((item) => !item.skipped);
   const accuracy = scored.length
@@ -186,9 +215,7 @@ export default function OpsPage() {
     [log],
   );
 
-  if (done || (sprint && left === 0 && log.length)) {
-    if (timer.current) window.clearInterval(timer.current);
-    markSessionComplete();
+  if (stage === 'done') {
     return (
       <main className="page practice-hub">
         <div className="masteryTitle">
@@ -201,6 +228,7 @@ export default function OpsPage() {
             </p>
           </span>
         </div>
+        {status}
         <section className="panel operation-empty">
           <b>Keep the facts that slowed you down.</b>
           <p>Accuracy before speed. Replay the weak items without paper.</p>
@@ -213,11 +241,11 @@ export default function OpsPage() {
               ))}
             </ul>
           ) : (
-            <p>No misses. Move to another operation or a mixed recall set.</p>
+            <p>{log.length ? 'No misses. Move to another operation or a mixed recall set.' : 'No answers recorded. Try an untimed drill to get started.'}</p>
           )}
           <div>
             <Button onClick={() => family && begin(family, 'ten')}>Drill again</Button>
-            <Button variant="outline" onClick={() => setFamily(null)}>
+            <Button variant="outline" onClick={() => { setFamily(null); setStage('choose'); }}>
               Back to operations
             </Button>
             <Link href="/">Home</Link>
@@ -237,6 +265,7 @@ export default function OpsPage() {
             <p>{PRACTICE_HUB_COPY.opsIntro}</p>
           </span>
         </div>
+        {status}
         <section className="domain-grid" aria-label="Mental operation categories">
           {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map((key) => {
             const meta = OPERATION_FAMILIES[key];
@@ -272,11 +301,11 @@ export default function OpsPage() {
   }
 
   const meta = OPERATION_FAMILIES[family];
-  if (!deck.length || (fact === undefined && !log.length)) {
+  if (stage === 'choose') {
     return (
       <main className="page practice-hub category-page">
         <nav className="practice-breadcrumb" aria-label="Breadcrumb">
-          <button onClick={() => setFamily(null)}>Operations</button>
+          <button onClick={() => { setFamily(null); setStage('choose'); }}>Operations</button>
           <ChevronRight />
           <span aria-current="page">{meta.title}</span>
         </nav>
@@ -287,8 +316,9 @@ export default function OpsPage() {
             <p>{meta.copy} Type the answer. No pen, no paper.</p>
           </span>
         </div>
+        {status}
         <section className="category-mode-grid" aria-label="Session formats">
-          <button onClick={() => begin(family, 'ten')}>
+          <button disabled={loading || !canStart} onClick={() => begin(family, 'ten')}>
             <i className={meta.color}>
               <Play />
             </i>
@@ -299,7 +329,7 @@ export default function OpsPage() {
             </span>
             <ChevronRight />
           </button>
-          <button onClick={() => begin(family, 'sprint')}>
+          <button disabled={loading || !canStart} onClick={() => begin(family, 'sprint')}>
             <i className={meta.color}>
               <Clock3 />
             </i>
@@ -334,11 +364,12 @@ export default function OpsPage() {
               {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
             </b>
           )}
-          <Button variant="outline" onClick={() => setDeck([])}>
+          <Button variant="outline" onClick={finish}>
             End session
           </Button>
         </div>
       </header>
+      {status}
       <section className="quiz">
         <div className="quizline">
           <small>{meta.title}</small>
@@ -380,12 +411,12 @@ export default function OpsPage() {
                   type="button"
                   key={key}
                   disabled={!!result}
-                  onClick={() => setAnswer(answer + key)}
+                  onClick={() => setAnswer((value) => (value + key).slice(0, 12))}
                 >
                   {key}
                 </button>
               ))}
-              <button type="button" disabled={!!result} onClick={() => setAnswer(answer.slice(0, -1))}>
+              <button type="button" aria-label="Delete last digit" disabled={!!result} onClick={() => setAnswer((value) => value.slice(0, -1))}>
                 ⌫
               </button>
             </div>
@@ -402,7 +433,7 @@ export default function OpsPage() {
                     {result.correct ? 'Correct. ' : 'Lock this in. '}
                     {result.strategy} — {(result.ms / 1000).toFixed(2)} sec
                   </b>
-                  {!result.correct && !result.skipped && (
+                  {!result.correct && (
                     <small>Correct answer: {result.a}</small>
                   )}
                 </span>

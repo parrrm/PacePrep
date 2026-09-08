@@ -10,13 +10,14 @@ export async function openProgressStore(
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const authorization = request.headers.get('authorization');
-  if (!url || !key || !authorization?.startsWith('Bearer ')) return null;
+  if (!url || !key || !authorization || !/^Bearer [^\s]+$/i.test(authorization)) return null;
   const headers = { apikey: key, Authorization: authorization };
   // Verify every request. Never trust a client user ID, an unverified JWT, or
   // the legacy Sites identity headers. Database requests also enforce RLS.
   const identity = await fetch(`${url}/auth/v1/user`, {
     headers,
     cache: 'no-store',
+    signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]),
   });
   if (identity.status === 401 || identity.status === 403) return null;
   if (!identity.ok) throw new Error('Authentication service unavailable');
@@ -25,7 +26,7 @@ export async function openProgressStore(
     email?: unknown;
     user_metadata?: { full_name?: unknown };
   };
-  if (typeof account.id !== 'string' || typeof account.email !== 'string')
+  if (typeof account.id !== 'string' || !account.id || typeof account.email !== 'string')
     return null;
   const user = {
     userId: account.id,
@@ -43,6 +44,7 @@ export async function openProgressStore(
     const response = await fetch(path, {
       ...init,
       cache: 'no-store',
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]),
       headers: {
         ...headers,
         'Content-Type': 'application/json',

@@ -25,6 +25,15 @@ export function getAuthClient() {
 }
 
 export async function getProgressAccount() {
+  if (!onVercel) {
+    const response = await fetch('/api/progress?identity=1', { cache: 'no-store' });
+    if (response.status === 401) return null;
+    if (!response.ok) throw new Error('Unable to verify the current account. Please reconnect.');
+    const payload = await response.json() as { user?: { userId?: unknown } };
+    if (typeof payload.user?.userId !== 'string' || !payload.user.userId)
+      throw new Error('Unable to verify the current account.');
+    return payload.user.userId;
+  }
   if (!cloudAuthReady) return null;
   const client = await getAuthClient();
   const {
@@ -40,6 +49,9 @@ export async function progressRequest(
   expectedAccountId?: string | null,
 ) {
   const headers = new Headers(init.headers);
+  // Binds Sites cookie requests too. This expectation is never identity proof.
+  if (expectedAccountId !== undefined)
+    headers.set('X-PacePrep-Account', expectedAccountId ?? 'guest');
   if (onVercel) {
     const auth = cloudAuthReady ? await getAuthClient() : null;
     const result = auth ? await auth.auth.getSession() : null;

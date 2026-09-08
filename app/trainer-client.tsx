@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAuthClient,
   getProgressAccount,
+  prepareAccountStorage,
   progressRequest,
 } from '@/lib/auth-client';
 import { progressStorageKey } from '@/lib/account-storage';
+import { isSavedProgress } from '@/lib/progress-validation';
 import { cloudAuthReady } from '@/lib/hosting';
 import { signInHref, signOutHref, signInLabel } from '@/lib/hosting';
 import {
@@ -36,6 +38,8 @@ import {
   decimalSlip,
   questionsPerMinute,
 } from '@/lib/recall-math';
+import { FACTS, choices, shuffle, type Fact, type Topic } from '@/lib/recall-bank';
+import { mergeProgress, tryKey, updateStat, type Stat } from '@/lib/learning-progress';
 import { InstallButton } from './pwa-provider';
 import { type BaselineAttempt } from '@/lib/baseline';
 import {
@@ -45,7 +49,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 
-type Topic = 'fractions' | 'tables' | 'squares' | 'cubes' | 'consecutive';
 type PracticeCategory = 'fractions' | 'tables' | 'powers' | 'percentages';
 type Level = 'Weak' | 'Learning' | 'Strong' | 'Mastered';
 type Mode =
@@ -58,26 +61,6 @@ type Mode =
   | 'test25'
   | 'test50'
   | 'sprint';
-type Fact = {
-  id: string;
-  topic: Topic;
-  group: string;
-  q: string;
-  a: string;
-  reverse?: boolean;
-};
-type Stat = {
-  attempts: number;
-  correct: number;
-  total: number;
-  best: number;
-  recent: boolean[];
-  last: number;
-  box?: number;
-  intervalDays?: number;
-  dueAt?: number;
-  lapses?: number;
-};
 type Try = {
   id: string;
   topic: Topic;
@@ -108,7 +91,6 @@ type SavedProgress = {
 };
 const LEGACY_STORAGE_KEY = 'recall-lab';
 const DAY_MS = 86_400_000;
-const LEITNER_INTERVALS = [0, 1, 3, 7, 14, 30];
 const TOPICS: Record<Topic, { name: string; short: string; target: number }> = {
   fractions: {
     name: 'Fraction ↔ Percentage',
@@ -124,264 +106,6 @@ const TOPICS: Record<Topic, { name: string; short: string; target: number }> = {
     target: 2800,
   },
 };
-const FR: [number, number][] = [
-  [1, 2],
-  [1, 3],
-  [2, 3],
-  [1, 4],
-  [3, 4],
-  [1, 5],
-  [2, 5],
-  [3, 5],
-  [4, 5],
-  [1, 6],
-  [5, 6],
-  [1, 7],
-  [2, 7],
-  [3, 7],
-  [4, 7],
-  [5, 7],
-  [6, 7],
-  [1, 8],
-  [3, 8],
-  [5, 8],
-  [7, 8],
-  [1, 9],
-  [2, 9],
-  [4, 9],
-  [5, 9],
-  [7, 9],
-  [8, 9],
-  [1, 10],
-  [3, 10],
-  [7, 10],
-  [9, 10],
-  [1, 11],
-  [2, 11],
-  [3, 11],
-  [4, 11],
-  [5, 11],
-  [6, 11],
-  [7, 11],
-  [8, 11],
-  [9, 11],
-  [10, 11],
-  [1, 12],
-  [5, 12],
-  [7, 12],
-  [11, 12],
-  [1, 13],
-  [2, 13],
-  [3, 13],
-  [4, 13],
-  [5, 13],
-  [6, 13],
-  [7, 13],
-  [8, 13],
-  [9, 13],
-  [10, 13],
-  [11, 13],
-  [12, 13],
-  [1, 14],
-  [3, 14],
-  [5, 14],
-  [9, 14],
-  [11, 14],
-  [13, 14],
-  [1, 15],
-  [2, 15],
-  [4, 15],
-  [7, 15],
-  [8, 15],
-  [11, 15],
-  [13, 15],
-  [14, 15],
-  [1, 16],
-  [3, 16],
-  [5, 16],
-  [7, 16],
-  [9, 16],
-  [11, 16],
-  [13, 16],
-  [15, 16],
-  [1, 20],
-  [3, 20],
-  [7, 20],
-  [9, 20],
-  [11, 20],
-  [13, 20],
-  [17, 20],
-  [19, 20],
-  [1, 25],
-  [2, 25],
-  [3, 25],
-  [4, 25],
-  [6, 25],
-  [7, 25],
-  [8, 25],
-  [9, 25],
-];
-const MIXED: [number, number, number][] = [
-  [1, 1, 4],
-  [1, 1, 2],
-  [1, 5, 8],
-  [1, 3, 4],
-  [2, 1, 4],
-  [2, 1, 2],
-  [2, 3, 4],
-  [3, 1, 8],
-];
-const percent = (n: number, d: number) => {
-  const scaledNumerator = n * 100;
-  const whole = Math.floor(scaledNumerator / d);
-  let remainder = scaledNumerator % d;
-  if (!remainder) return `${whole}%`;
-
-  // Banking-exam recall banks use the exact terminating value, and the first
-  // two decimal digits (without rounding) for recurring values such as 1/6.
-  let denominator = d;
-  while (denominator % 2 === 0) denominator /= 2;
-  while (denominator % 5 === 0) denominator /= 5;
-  const decimalLimit = denominator === 1 ? 12 : 2;
-  let decimals = '';
-  while (remainder && decimals.length < decimalLimit) {
-    remainder *= 10;
-    decimals += Math.floor(remainder / d);
-    remainder %= d;
-  }
-  return `${whole}.${decimals}%`;
-};
-function bank() {
-  const f: Fact[] = [];
-  FR.forEach(([n, d]) => {
-    const p = percent(n, d);
-    f.push(
-      {
-        id: `f${n}-${d}`,
-        topic: 'fractions',
-        group: `Denominator ${d}`,
-        q: `${n}/${d} → ?`,
-        a: p,
-      },
-      {
-        id: `f${n}-${d}r`,
-        topic: 'fractions',
-        group: `Denominator ${d}`,
-        q: `${p} → ?`,
-        a: `${n}/${d}`,
-        reverse: true,
-      },
-    );
-  });
-  MIXED.forEach(([whole, n, d]) => {
-    const improper = whole * d + n,
-      p = percent(improper, d),
-      mixed = `${whole} ${n}/${d}`;
-    f.push(
-      {
-        id: `fm${whole}-${n}-${d}`,
-        topic: 'fractions',
-        group: 'Mixed numbers',
-        q: `${p} → ?`,
-        a: mixed,
-        reverse: true,
-      },
-      {
-        id: `fm${whole}-${n}-${d}r`,
-        topic: 'fractions',
-        group: 'Mixed numbers',
-        q: `${mixed} → ?`,
-        a: p,
-      },
-    );
-  });
-  for (let n = 12; n <= 30; n++)
-    for (let x = 1; x <= 10; x++) {
-      const s = n <= 15 ? 12 : n <= 20 ? 16 : n <= 25 ? 21 : 26,
-        e = s === 26 ? 30 : s + 4,
-        g = `Tables ${s}–${e}`;
-      f.push(
-        {
-          id: `t${n}-${x}`,
-          topic: 'tables',
-          group: g,
-          q: `${n} × ${x} = ?`,
-          a: String(n * x),
-        },
-        {
-          id: `t${n}-${x}r`,
-          topic: 'tables',
-          group: g,
-          q: `${n * x} ÷ ${n} = ?`,
-          a: String(x),
-          reverse: true,
-        },
-      );
-    }
-  for (let n = 1; n <= 35; n++) {
-    const s = n <= 10 ? 1 : n <= 20 ? 11 : n <= 30 ? 21 : 31,
-      e = s === 31 ? 35 : s + 9,
-      g = `Squares ${s}–${e}`;
-    f.push(
-      {
-        id: `s${n}`,
-        topic: 'squares',
-        group: g,
-        q: `${n}² = ?`,
-        a: String(n * n),
-      },
-      {
-        id: `s${n}r`,
-        topic: 'squares',
-        group: g,
-        q: `?² = ${n * n}`,
-        a: String(n),
-        reverse: true,
-      },
-    );
-  }
-  for (let n = 1; n <= 15; n++) {
-    const s = n <= 5 ? 1 : n <= 10 ? 6 : 11,
-      g = `Cubes ${s}–${s + 4}`;
-    f.push(
-      {
-        id: `c${n}`,
-        topic: 'cubes',
-        group: g,
-        q: `${n}³ = ?`,
-        a: String(n * n * n),
-      },
-      {
-        id: `c${n}r`,
-        topic: 'cubes',
-        group: g,
-        q: `?³ = ${n * n * n}`,
-        a: String(n),
-        reverse: true,
-      },
-    );
-  }
-  for (let n = 11; n <= 19; n++)
-    f.push(
-      {
-        id: `m${n}`,
-        topic: 'consecutive',
-        group: 'Consecutive 11–20',
-        q: `${n} × ${n + 1} = ?`,
-        a: String(n * (n + 1)),
-      },
-      {
-        id: `m${n}r`,
-        topic: 'consecutive',
-        group: 'Consecutive 11–20',
-        q: `${n} × ? = ${n * (n + 1)}`,
-        a: String(n + 1),
-        reverse: true,
-      },
-    );
-  return f;
-}
-const FACTS = bank();
 const level = (s?: Stat, target = 2200): Level => {
   if (!s || s.attempts < 2) return 'Weak';
   const ac = s.correct / s.attempts,
@@ -450,81 +174,11 @@ function MathText({ value }: { value: string }) {
     </>
   );
 }
-function updateStat(
-  old: Stat | undefined,
-  correct: boolean,
-  ms: number,
-  now = Date.now(),
-): Stat {
-  const current = old ?? {
-    attempts: 0,
-    correct: 0,
-    total: 0,
-    best: 0,
-    recent: [],
-    last: 0,
-    box: 1,
-    lapses: 0,
-  };
-  const previousBox = current.box ?? 1;
-  const nextBox = correct ? Math.min(5, previousBox + 1) : 1;
-  const intervalDays = correct ? LEITNER_INTERVALS[nextBox] : 0;
-  return {
-    attempts: current.attempts + 1,
-    correct: current.correct + (correct ? 1 : 0),
-    total: current.total + ms,
-    best: current.best ? Math.min(current.best, ms) : ms,
-    recent: [...current.recent.slice(-5), correct],
-    last: now,
-    box: nextBox,
-    intervalDays,
-    dueAt: correct ? now + intervalDays * DAY_MS : now + 10 * 60_000,
-    lapses: (current.lapses ?? 0) + (correct ? 0 : 1),
-  };
-}
 function dueLabel(stat?: Stat) {
   if (!stat?.dueAt || stat.dueAt <= Date.now()) return 'Due now';
   const daysAway = Math.ceil((stat.dueAt - Date.now()) / DAY_MS);
   if (daysAway === 1) return 'Review tomorrow';
   return `Predicted review ${new Date(stat.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
-}
-function tryKey(item: Try) {
-  return `${item.id}|${item.at}|${item.ms}|${item.raw ?? ''}|${item.skipped ? 1 : 0}`;
-}
-function mergeProgress(
-  local: SavedProgress,
-  cloud: SavedProgress | null,
-): SavedProgress {
-  if (!cloud) return local;
-  const cloudHistory = cloud.history ?? [];
-  const known = new Set(cloudHistory.map(tryKey));
-  const extraLocal = (local.history ?? []).filter(
-    (item) => !known.has(tryKey(item)),
-  );
-  const mergedStats = { ...cloud.stats };
-  if (!cloud.stats && local.stats) Object.assign(mergedStats, local.stats);
-  else {
-    extraLocal.forEach((item) => {
-      mergedStats[item.id] = updateStat(
-        mergedStats[item.id],
-        item.correct && !item.skipped,
-        item.ms,
-        item.at,
-      );
-    });
-  }
-  return {
-    stats: mergedStats,
-    history: [...cloudHistory, ...extraLocal]
-      .sort((a, b) => a.at - b.at)
-      .slice(-1500),
-    completedSessions: Math.max(
-      cloud.completedSessions ?? 0,
-      local.completedSessions ?? 0,
-    ),
-    dark: local.dark ?? cloud.dark,
-    input: local.input ?? cloud.input,
-  };
 }
 function practiceStreak(history: Try[]) {
   const activeDays = new Set(
@@ -539,14 +193,6 @@ function practiceStreak(history: Try[]) {
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
-}
-function shuffle<T>(items: T[]) {
-  const result = [...items];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
 }
 function factWeight(fact: Fact, stats: Record<string, Stat>) {
   const s = stats[fact.id],
@@ -690,59 +336,6 @@ function createDeck(mode: Mode, pool: Fact[], stats: Record<string, Stat>) {
   if (mode === 'random') return balancedDeck(pool, stats, false);
   return balancedDeck(pool, stats, true);
 }
-function choices(f: Fact) {
-  const n = Number(f.a.replace('%', ''));
-  if (Number.isNaN(n)) {
-    const answerKind =
-      f.a.includes(' ') && f.a.includes('/')
-        ? 'mixed'
-        : f.a.includes('/')
-          ? 'fraction'
-          : 'text';
-    const candidates = FACTS.filter((x) => {
-        const candidateKind =
-          x.a.includes(' ') && x.a.includes('/')
-            ? 'mixed'
-            : x.a.includes('/')
-              ? 'fraction'
-              : 'text';
-        return (
-          x.topic === f.topic &&
-          x.id !== f.id &&
-          x.reverse === f.reverse &&
-          candidateKind === answerKind
-        );
-      }),
-      sameFamily = candidates.filter(
-        (candidate) => candidate.group === f.group,
-      ),
-      others = shuffle([
-        ...new Set([...sameFamily, ...candidates].map((x) => x.a)),
-      ]).slice(0, 3);
-    return [f.a, ...others].sort(() => Math.random() - 0.5);
-  }
-  const usesPercent = f.a.includes('%');
-  const exactDistractors = [
-    ...new Set(
-      FACTS.filter(
-        (candidate) =>
-          candidate.id !== f.id &&
-          candidate.topic === f.topic &&
-          candidate.reverse === f.reverse &&
-          candidate.a.includes('%') === usesPercent &&
-          !Number.isNaN(Number(candidate.a.replace('%', ''))),
-      ).map((candidate) => candidate.a),
-    ),
-  ]
-    .sort(
-      (a, b) =>
-        Math.abs(Number(a.replace('%', '')) - n) -
-        Math.abs(Number(b.replace('%', '')) - n),
-    )
-    .slice(0, 10);
-  const nearbyDistractors = shuffle(exactDistractors).slice(0, 3);
-  return shuffle([f.a, ...nearbyDistractors]);
-}
 function topConfusion(history: Try[]) {
   const counts = new Map<string, { ids: [string, string]; count: number }>();
   history
@@ -790,11 +383,12 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     [history, setHistory] = useState<Try[]>([]),
     [completedSessions, setCompletedSessions] = useState(0),
     [ready, setReady] = useState(false),
+    [loadError, setLoadError] = useState(false),
     [mode, setMode] = useState<Mode>('mixed'),
     [session, setSession] = useState<Try[]>([]),
     [skippedIds, setSkippedIds] = useState<string[]>([]),
     [profileOpen, setProfileOpen] = useState(false),
-    [fact, setFact] = useState(FACTS.find((f) => f.id === 'f7-16')!),
+    [fact, setFact] = useState<Fact>(FACTS.find((f) => f.id === 'f7-16')!),
     [opts, setOpts] = useState<string[]>([]),
     [answer, setAnswer] = useState(''),
     [result, setResult] = useState<{
@@ -833,9 +427,14 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     const id = window.setTimeout(async () => {
       // Resolve the current session before reading any account's local history.
       // A stale localStorage marker is never evidence of a signed-in account.
-      const userId = grokTest
-        ? null
-        : await getProgressAccount().catch(() => null);
+      let userId: string | null;
+      try {
+        userId = grokTest ? null : await getProgressAccount();
+        if (userId) prepareAccountStorage(userId);
+      } catch {
+        if (active) setLoadError(true);
+        return;
+      }
       if (!active) return;
       const storageKey = grokTest
         ? 'paceprep-grok-test'
@@ -848,10 +447,12 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
             ? localStorage.getItem(LEGACY_STORAGE_KEY)
             : null) ??
           '{}';
-        const s = JSON.parse(raw) as SavedProgress;
-        const pending = JSON.parse(
-          sessionStorage.getItem('paceprep-pending-baseline') || '[]',
-        ) as BaselineAttempt[];
+        const parsed: unknown = JSON.parse(raw);
+        if (!isSavedProgress(parsed)) throw new Error('Invalid local progress');
+        const s = parsed as SavedProgress;
+        const pendingData: unknown = JSON.parse(sessionStorage.getItem('paceprep-pending-baseline') || '[]');
+        const pending = isSavedProgress({history: pendingData})
+          ? pendingData as BaselineAttempt[] : [];
         if (Array.isArray(pending) && pending.length) {
           const baselineId = `baseline-${pending[0].at}`;
           const known = new Set((s.history || []).map(tryKey));
@@ -883,7 +484,10 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
         setCompletedSessions(s.completedSessions || 0);
         setDark(!!s.dark);
         setInput(s.input === 'typed' ? 'typed' : 'mcq');
-      } catch {}
+      } catch {
+        setLoadError(true);
+        return;
+      }
       setReady(true);
     }, 0);
     return () => {
@@ -945,6 +549,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       .then(async (response) => {
         if (!active) return;
         if (response.status === 401) {
+          if (progressAccount.current?.userId) throw new Error('Session expired');
           setAuthUser(null);
           setCloudReady(false);
           setAuthStatus('guest');
@@ -956,6 +561,9 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           progress: SavedProgress | null;
         };
         if (!active) return;
+        if (payload.user?.userId !== progressAccount.current?.userId ||
+          (payload.progress !== null && !isSavedProgress(payload.progress)))
+          throw new Error('Invalid account progress');
         setAuthUser(payload.user);
         const merged = mergeProgress(localSnapshot.current, payload.progress);
         setStats(merged.stats || {});
@@ -988,7 +596,9 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     const id = window.setTimeout(() => {
       if (deletingProgress.current) return;
       setCloudStatus('saving');
-      cloudSave.current = requestProgress({
+      cloudSave.current = (cloudSave.current ?? Promise.resolve()).then(async () => {
+        if (deletingProgress.current) return;
+        const response = await requestProgress({
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -998,11 +608,10 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           dark,
           input,
         }),
+        });
+        if (!response.ok) throw new Error('Cloud save failed');
+        setCloudStatus('saved');
       })
-        .then((response) => {
-          if (!response.ok) throw new Error('Cloud save failed');
-          setCloudStatus('saved');
-        })
         .catch(() => setCloudStatus('error'));
     }, 700);
     return () => window.clearTimeout(id);
@@ -1336,6 +945,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
   }, [view, mode, finishSession]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.repeat || profileOpen) return;
       if (view === 'practice' && result && e.key === 'Enter') {
         e.preventDefault();
         advanceNow();
@@ -1384,6 +994,15 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     mastered = FACTS.filter(
       (f) => level(stats[f.id], TOPICS[f.topic].target) === 'Mastered',
     ).length;
+  if (loadError) return (
+    <main className="page operation-empty">
+      <h1>Your progress needs attention</h1>
+      <p>We could not safely load your account or saved history. Your existing data has been preserved.</p>
+      <Button onClick={() => window.location.reload()}>Reload and retry</Button>
+      <Link href="/practice">Back to practice hub</Link>
+    </main>
+  );
+  if (!ready) return <main className="gateway-loading"><output>Loading your progress…</output></main>;
   return (
     <main>
       {grokTest && (

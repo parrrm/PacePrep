@@ -4,7 +4,6 @@ import {
   BookOpen,
   Brain,
   ChevronRight,
-  Clock3,
   Divide,
   Grid3X3,
   Minus,

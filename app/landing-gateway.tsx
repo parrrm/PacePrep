@@ -172,7 +172,7 @@ export default function LandingGateway() {
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
-        <a href="/practice" className="landing-path-link">
+        <Link href="/practice" className="landing-path-link">
           <article>
             <BookOpen />
             <span>
@@ -180,8 +180,8 @@ export default function LandingGateway() {
               <small>Recall facts and in-head operations in one place.</small>
             </span>
           </article>
-        </a>
-        <a href="/ops" className="landing-path-link">
+        </Link>
+        <Link href="/ops" className="landing-path-link">
           <article>
             <Target />
             <span>
@@ -191,7 +191,7 @@ export default function LandingGateway() {
               </small>
             </span>
           </article>
-        </a>
+        </Link>
         <article>
           <Clock3 />
           <span>
