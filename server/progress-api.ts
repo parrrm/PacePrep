@@ -1,4 +1,5 @@
 import type { ProgressStore } from './progress-types';
+import { ProgressConflict } from './progress-conflict.ts';
 import { isSavedProgress } from '../lib/progress-validation.ts';
 
 export const MAX_PROGRESS_BYTES = 900_000;
@@ -13,8 +14,10 @@ function privateJson(body: unknown, init: ResponseInit = {}) {
 
 function crossOrigin(request: Request) {
   const origin = request.headers.get('origin');
-  return (origin !== null && origin !== new URL(request.url).origin) ||
-    request.headers.get('sec-fetch-site') === 'cross-site';
+  return (
+    (origin !== null && origin !== new URL(request.url).origin) ||
+    request.headers.get('sec-fetch-site') === 'cross-site'
+  );
 }
 
 // A stream limit also covers chunked bodies; Content-Length is only an early exit.
@@ -44,13 +47,22 @@ async function readBody(request: Request): Promise<string | null> {
 }
 
 /** Shared HTTP boundary for both hosting adapters, with a testable store boundary. */
-export function createProgressHandlers(openStore: (request: Request) => Promise<ProgressStore | null>) {
+export function createProgressHandlers(
+  openStore: (request: Request) => Promise<ProgressStore | null>,
+) {
   async function storeFor(request: Request) {
     const store = await openStore(request);
-    if (!store) return privateJson({ authenticated: false, error: 'Authentication required' }, { status: 401 });
+    if (!store)
+      return privateJson(
+        { authenticated: false, error: 'Authentication required' },
+        { status: 401 },
+      );
     const expected = request.headers.get(PROGRESS_ACCOUNT_HEADER);
     if (expected !== null && expected !== store.user.userId)
-      return privateJson({ error: 'Account changed. Reload before syncing progress.' }, { status: 409 });
+      return privateJson(
+        { error: 'Account changed. Reload before syncing progress.' },
+        { status: 409 },
+      );
     return store;
   }
   return {
@@ -62,44 +74,116 @@ export function createProgressHandlers(openStore: (request: Request) => Promise<
           return privateJson({ authenticated: true, user: store.user });
         const saved = await store.read();
         if (saved.progress !== null && !isSavedProgress(saved.progress))
-          return privateJson({ error: 'Saved cloud progress needs recovery. Local progress is preserved.' }, { status: 503 });
+          return privateJson(
+            {
+              error:
+                'Saved cloud progress needs recovery. Local progress is preserved.',
+            },
+            { status: 503 },
+          );
         return privateJson({ authenticated: true, user: store.user, ...saved });
       } catch {
-        return privateJson({ error: 'Cloud progress unavailable. Your local progress is preserved.' }, { status: 503 });
+        return privateJson(
+          {
+            error:
+              'Cloud progress unavailable. Your local progress is preserved.',
+          },
+          { status: 503 },
+        );
       }
     },
     async PUT(request: Request) {
       if (crossOrigin(request))
-        return privateJson({ error: 'Cross-origin write rejected' }, { status: 403 });
-      if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json')
+        return privateJson(
+          { error: 'Cross-origin write rejected' },
+          { status: 403 },
+        );
+      if (
+        request.headers
+          .get('content-type')
+          ?.split(';')[0]
+          .trim()
+          .toLowerCase() !== 'application/json'
+      )
         return privateJson({ error: 'JSON payload required' }, { status: 415 });
       try {
         const store = await storeFor(request);
         if (store instanceof Response) return store;
         let raw: string | null;
-        try { raw = await readBody(request); }
-        catch { return privateJson({ error: 'Invalid progress payload' }, { status: 400 }); }
-        if (raw === null) return privateJson({ error: 'Progress payload is too large' }, { status: 413 });
+        try {
+          raw = await readBody(request);
+        } catch {
+          return privateJson(
+            { error: 'Invalid progress payload' },
+            { status: 400 },
+          );
+        }
+        if (raw === null)
+          return privateJson(
+            { error: 'Progress payload is too large' },
+            { status: 413 },
+          );
         let body: unknown;
-        try { body = JSON.parse(raw); }
-        catch { return privateJson({ error: 'Invalid progress payload' }, { status: 400 }); }
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          return privateJson(
+            { error: 'Invalid progress payload' },
+            { status: 400 },
+          );
+        }
         if (!isSavedProgress(body))
-          return privateJson({ error: 'Invalid progress payload' }, { status: 400 });
-        return privateJson({ saved: true, updatedAt: await store.write(body) });
-      } catch {
-        return privateJson({ error: 'Cloud save unavailable. Your local progress is preserved.' }, { status: 503 });
+          return privateJson(
+            { error: 'Invalid progress payload' },
+            { status: 400 },
+          );
+        const expected = request.headers.get('If-Match');
+        if (!expected)
+          return privateJson(
+            { error: 'Reload progress before saving' },
+            { status: 428 },
+          );
+        if (
+          expected !== 'absent' &&
+          !/^\d{1,16}$/.test(expected) &&
+          !/^\d{4}-\d{2}-\d{2}T[0-9:.+-]+Z?$/.test(expected)
+        )
+          return privateJson(
+            { error: 'Invalid progress revision' },
+            { status: 400 },
+          );
+        return privateJson({
+          saved: true,
+          ...(await store.write(body, expected === 'absent' ? null : expected)),
+        });
+      } catch (error) {
+        if (error instanceof ProgressConflict)
+          return privateJson({ error: error.message }, { status: 412 });
+        return privateJson(
+          {
+            error: 'Cloud save unavailable. Your local progress is preserved.',
+          },
+          { status: 503 },
+        );
       }
     },
     async DELETE(request: Request) {
       if (crossOrigin(request))
-        return privateJson({ error: 'Cross-origin write rejected' }, { status: 403 });
+        return privateJson(
+          { error: 'Cross-origin write rejected' },
+          { status: 403 },
+        );
       try {
         const store = await storeFor(request);
         if (store instanceof Response) return store;
-        await store.remove();
-        return privateJson({ deleted: true });
-      } catch {
-        return privateJson({ error: 'Could not delete cloud progress. Please retry.' }, { status: 503 });
+        return privateJson({ deleted: true, ...(await store.remove()) });
+      } catch (error) {
+        if (error instanceof ProgressConflict)
+          return privateJson({ error: error.message }, { status: 412 });
+        return privateJson(
+          { error: 'Could not delete cloud progress. Please retry.' },
+          { status: 503 },
+        );
       }
     },
   };

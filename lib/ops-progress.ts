@@ -1,6 +1,10 @@
 import { progressStorageKey } from './account-storage.ts';
 import { updateStat, mergeProgress } from './learning-progress.ts';
-import { isSavedProgress, type SavedProgress, type ProgressAttempt } from './progress-validation.ts';
+import {
+  isSavedProgress,
+  type SavedProgress,
+  type ProgressAttempt,
+} from './progress-validation.ts';
 
 export type OperationProgress = {
   accountId: string | null;
@@ -19,7 +23,8 @@ export function createOperationProgress(
   let pending: Promise<void> = Promise.resolve();
   function read(): SavedProgress {
     const snapshot: unknown = JSON.parse(storage.getItem(key) || '{}');
-    if (!isSavedProgress(snapshot)) throw new Error('Saved progress needs recovery');
+    if (!isSavedProgress(snapshot))
+      throw new Error('Saved progress needs recovery');
     return snapshot;
   }
   function write(snapshot: SavedProgress) {
@@ -37,35 +42,61 @@ export function createOperationProgress(
       const snapshot = read();
       write({
         ...snapshot,
-        stats: { ...snapshot.stats, [item.id]: updateStat(snapshot.stats?.[item.id], item.correct && !item.skipped, item.ms, item.at) },
+        stats: {
+          ...snapshot.stats,
+          [item.id]: updateStat(
+            snapshot.stats?.[item.id],
+            item.correct && !item.skipped,
+            item.ms,
+            item.at,
+          ),
+        },
         history: [...(snapshot.history || []), item].slice(-1500),
       });
     },
     complete() {
       const snapshot = read();
-      write({ ...snapshot, completedSessions: (snapshot.completedSessions || 0) + 1 });
+      write({
+        ...snapshot,
+        completedSessions: (snapshot.completedSessions || 0) + 1,
+      });
     },
     flush: () => pending,
   };
 }
 
 export async function openOperationProgress(): Promise<OperationProgress> {
-  const { getProgressAccount, progressRequest, prepareAccountStorage } = await import('./auth-client');
+  const { getProgressAccount, openProgressClient, prepareAccountStorage } =
+    await import('./auth-client');
   const accountId = await getProgressAccount();
+  const progressRequest = openProgressClient(accountId);
   if (accountId) prepareAccountStorage(accountId);
   const key = progressStorageKey(accountId);
   const local: unknown = JSON.parse(localStorage.getItem(key) || '{}');
   if (!isSavedProgress(local)) throw new Error('Saved progress needs recovery');
   if (accountId) {
-    const response = await progressRequest({}, accountId);
+    const response = await progressRequest();
     if (!response.ok) throw new Error('Cloud progress unavailable');
-    const payload = await response.json() as { user?: {userId?: string}; progress: unknown };
-    if (payload.user?.userId !== accountId || (payload.progress !== null && !isSavedProgress(payload.progress)))
+    const payload = (await response.json()) as {
+      user?: { userId?: string };
+      progress: unknown;
+    };
+    if (
+      payload.user?.userId !== accountId ||
+      (payload.progress !== null && !isSavedProgress(payload.progress))
+    )
       throw new Error('Invalid account progress');
-    localStorage.setItem(key, JSON.stringify(mergeProgress(local, payload.progress)));
+    localStorage.setItem(
+      key,
+      JSON.stringify(mergeProgress(local, payload.progress)),
+    );
   }
   return createOperationProgress(accountId, localStorage, async (snapshot) => {
-    const response = await progressRequest({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snapshot) }, accountId);
+    const response = await progressRequest({
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(snapshot),
+    });
     if (!response.ok) throw new Error('Cloud sync failed');
   });
 }

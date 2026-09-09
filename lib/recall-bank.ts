@@ -1,6 +1,11 @@
 import { answersMatch } from './recall-math.ts';
 
-export type Topic = 'fractions' | 'tables' | 'squares' | 'cubes' | 'consecutive';
+export type Topic =
+  | 'fractions'
+  | 'tables'
+  | 'squares'
+  | 'cubes'
+  | 'consecutive';
 export type Fact = {
   id: string;
   topic: Topic;
@@ -8,6 +13,7 @@ export type Fact = {
   q: string;
   a: string;
   reverse?: boolean;
+  approximate?: boolean;
 };
 
 const FR: [number, number][] = [
@@ -117,43 +123,56 @@ const MIXED: [number, number, number][] = [
   [2, 3, 4],
   [3, 1, 8],
 ];
-export const percent = (n: number, d: number) => {
-  const scaledNumerator = n * 100;
-  const whole = Math.floor(scaledNumerator / d);
-  let remainder = scaledNumerator % d;
-  if (!remainder) return `${whole}%`;
+function percentage(n: number, d: number) {
+  if (!Number.isSafeInteger(n) || n < 0 || !Number.isSafeInteger(d) || d <= 0)
+    throw new RangeError(
+      'Percentage inputs must be non-negative safe integers with a positive denominator',
+    );
+  const numerator = BigInt(n) * 100n;
+  const divisor = BigInt(d);
+  const whole = numerator / divisor;
+  let remainder = numerator % divisor;
+  if (!remainder) return { value: `${whole}%`, approximate: false };
 
-  // Banking-exam recall banks use the exact terminating value, and the first
-  // two decimal digits (without rounding) for recurring values such as 1/6.
-  let denominator = d;
-  while (denominator % 2 === 0) denominator /= 2;
-  while (denominator % 5 === 0) denominator /= 5;
-  const decimalLimit = denominator === 1 ? 12 : 2;
+  let a = numerator;
+  let b = divisor;
+  while (b) [a, b] = [b, a % b];
+  let denominator = divisor / a;
+  while (denominator % 2n === 0n) denominator /= 2n;
+  while (denominator % 5n === 0n) denominator /= 5n;
+  const approximate = denominator !== 1n;
   let decimals = '';
-  while (remainder && decimals.length < decimalLimit) {
-    remainder *= 10;
-    decimals += Math.floor(remainder / d);
-    remainder %= d;
+  // PacePrep's recall convention truncates repeating percentages to two
+  // places. Terminating percentages retain every digit of their exact value.
+  while (remainder && (!approximate || decimals.length < 2)) {
+    remainder *= 10n;
+    decimals += remainder / divisor;
+    remainder %= divisor;
   }
-  return `${whole}.${decimals}%`;
-};
+  return { value: `${whole}.${decimals}%`, approximate };
+}
+
+export const percent = (n: number, d: number) => percentage(n, d).value;
+
 export function buildRecallBank() {
   const f: Fact[] = [];
   FR.forEach(([n, d]) => {
-    const p = percent(n, d);
+    const { value: p, approximate } = percentage(n, d);
     f.push(
       {
         id: `f${n}-${d}`,
         topic: 'fractions',
         group: `Denominator ${d}`,
-        q: `${n}/${d} → ?`,
+        q: `${n}/${d} ${approximate ? '≈' : '→'} ?%`,
+        approximate,
         a: p,
       },
       {
         id: `f${n}-${d}r`,
         topic: 'fractions',
         group: `Denominator ${d}`,
-        q: `${p} → ?`,
+        q: `${p} ${approximate ? '≈' : '→'} ?`,
+        approximate,
         a: `${n}/${d}`,
         reverse: true,
       },
@@ -176,7 +195,7 @@ export function buildRecallBank() {
         id: `fm${whole}-${n}-${d}r`,
         topic: 'fractions',
         group: 'Mixed numbers',
-        q: `${mixed} → ?`,
+        q: `${mixed} → ?%`,
         a: p,
       },
     );

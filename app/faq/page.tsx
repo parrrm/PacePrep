@@ -19,11 +19,14 @@ export default function FaqPage() {
         </p>
       </section>
       <section>
-        <h2>Can I train addition, subtraction, multiplication, and division without paper?</h2>
+        <h2>
+          Can I train addition, subtraction, multiplication, and division
+          without paper?
+        </h2>
         <p>
           Yes. Open Operations from the home page or go to /ops. Each family is
-          a closed bank of mental items. Type the answer; a strategy line appears
-          after you check. Guest progress stays on this device.
+          a closed bank of mental items. Type the answer; a strategy line
+          appears after you check. Guest progress stays on this device.
         </p>
       </section>
       <section>
@@ -37,16 +40,18 @@ export default function FaqPage() {
       <section>
         <h2>Why are recurring percentages shown as 16.66% or 33.33%?</h2>
         <p>
-          The practice bank uses the conventional memorised banking-exam form
-          without rounding up. Terminating values such as 12.5% and 43.75%
-          remain exact.
+          Recurring values are marked approximate and truncated to two decimal
+          places for these drills. Enter the displayed approximation.
+          Terminating values such as 12.5% and 43.75% remain exact.
         </p>
       </section>
       <section>
         <h2>Does guest practice survive sign-in?</h2>
         <p>
-          Yes. Device history is merged with the signed-in record and duplicate
-          attempts are removed.
+          When cloud accounts are available, guest history can be merged into
+          the first account used on the device, or that same account on a later
+          sign-in. Duplicate attempts are removed. A different account does not
+          inherit history associated with the previous learner.
         </p>
       </section>
     </InfoShell>

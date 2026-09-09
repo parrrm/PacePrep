@@ -61,5 +61,5 @@ export const PRACTICE_HUB_COPY = {
   mixedEyebrow: 'CROSS-CATEGORY TRAINING',
   mixedTitle: 'Mixed review & timed practice',
   mixedIntro:
-    'Let the scheduler combine due, weak, reverse, and strong-review facts — including mental operations.',
+    'Let the recall scheduler combine due, weak, reverse, and strong-review facts.',
 } as const;

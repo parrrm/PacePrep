@@ -85,20 +85,26 @@ export default function OpsPage() {
     let active = true;
     const category = new URLSearchParams(window.location.search).get('family');
 
-    void openOperationProgress().then((account) => {
-      if (!active) return;
-      progress.current = account;
-      if (category && Object.hasOwn(OPERATION_FAMILIES, category))
-        setFamily(category as OperationFamilyId);
-      setCanStart(true);
-      setLoading(false);
-    }).catch(() => {
-      if (active) {
-        setSaveError('Your saved progress could not be loaded. Reload to retry before starting a drill.');
+    void openOperationProgress()
+      .then((account) => {
+        if (!active) return;
+        progress.current = account;
+        if (category && Object.hasOwn(OPERATION_FAMILIES, category))
+          setFamily(category as OperationFamilyId);
+        setCanStart(true);
         setLoading(false);
-      }
-    });
-    return () => { active = false; };
+      })
+      .catch(() => {
+        if (active) {
+          setSaveError(
+            'Your saved progress could not be loaded. Reload to retry before starting a drill.',
+          );
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const finish = useCallback(() => {
@@ -108,17 +114,27 @@ export default function OpsPage() {
     counted.current = true;
     try {
       completeOperationSession(progress.current);
-      void progress.current.flush().catch(() =>
-        setSaveError('Cloud sync could not finish. Your answers are saved on this device. Reopen your dashboard when connected to retry.'));
+      void progress.current
+        .flush()
+        .catch(() =>
+          setSaveError(
+            'Cloud sync could not finish. Your answers are saved on this device. Reopen your dashboard when connected to retry.',
+          ),
+        );
     } catch {
-      setSaveError('Progress could not be saved. Keep this session open to review your answers.');
+      setSaveError(
+        'Progress could not be saved. Keep this session open to review your answers.',
+      );
     }
   }, []);
 
   useEffect(() => {
     if (stage !== 'running' || !sprint) return;
     const tick = () => {
-      const remaining = Math.max(0, Math.ceil((deadline.current - performance.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.ceil((deadline.current - performance.now()) / 1000),
+      );
       setLeft(remaining);
       if (!remaining) finish();
     };
@@ -138,6 +154,11 @@ export default function OpsPage() {
 
   function begin(next: OperationFamilyId, mode: 'ten' | 'sprint') {
     if (!progress.current) return;
+    try {
+      sessionStorage.setItem('paceprep-entered', '1');
+    } catch {
+      /* Practice can continue with its loaded storage. */
+    }
     const pool = shuffle(operationsByTopic(next));
     sessionId.current = `ops-${crypto.randomUUID()}`;
     counted.current = false;
@@ -158,21 +179,32 @@ export default function OpsPage() {
   }
 
   function finishItem(raw: string, skipped = false) {
-    if (stage !== 'running' || !fact || locked.current || !progress.current) return;
+    if (stage !== 'running' || !fact || locked.current || !progress.current)
+      return;
     if (sprint && performance.now() >= deadline.current) return finish();
     locked.current = true;
     const item: Try = {
-      id: fact.id, q: fact.q, a: fact.a, strategy: fact.strategy,
-      raw, skipped, correct: !skipped && answersMatch(raw, fact.a),
+      id: fact.id,
+      q: fact.q,
+      a: fact.a,
+      strategy: fact.strategy,
+      raw,
+      skipped,
+      correct: !skipped && answersMatch(raw, fact.a),
       ms: Math.max(100, performance.now() - started.current),
     };
     attemptCount.current++;
     setLog((current) => [...current, item]);
     setResult(item);
     try {
-      recordOperationAttempt({ ...item, topic: family!, sessionId: sessionId.current }, progress.current);
+      recordOperationAttempt(
+        { ...item, topic: family!, sessionId: sessionId.current },
+        progress.current,
+      );
     } catch {
-      setSaveError('This answer could not be saved. Your session review is still available below.');
+      setSaveError(
+        'This answer could not be saved. Your session review is still available below.',
+      );
     }
   }
 
@@ -181,11 +213,17 @@ export default function OpsPage() {
     if (raw) finishItem(raw);
   }
 
-  function skip() { finishItem('', true); }
+  function skip() {
+    finishItem('', true);
+  }
 
   function goNext() {
-    if (stage !== 'running' || !result) return;
-    if (index + 1 >= deck.length || (sprint && performance.now() >= deadline.current)) return finish();
+    if (stage !== 'running' || !result || !locked.current) return;
+    if (
+      index + 1 >= deck.length ||
+      (sprint && performance.now() >= deadline.current)
+    )
+      return finish();
     locked.current = false;
     setAnswer('');
     setResult(null);
@@ -193,13 +231,19 @@ export default function OpsPage() {
     setIndex((value) => value + 1);
   }
 
-  const status = loading
-    ? <output>Loading your progress…</output>
-    : saveError ? <p role="alert" className="operation-save-error">{saveError}</p> : null;
+  const status = loading ? (
+    <output>Loading your progress…</output>
+  ) : saveError ? (
+    <p role="alert" className="operation-save-error">
+      {saveError}
+    </p>
+  ) : null;
 
   const scored = log.filter((item) => !item.skipped);
   const accuracy = scored.length
-    ? Math.round((scored.filter((item) => item.correct).length / scored.length) * 100)
+    ? Math.round(
+        (scored.filter((item) => item.correct).length / scored.length) * 100,
+      )
     : 0;
   const average =
     scored.length > 0
@@ -223,8 +267,10 @@ export default function OpsPage() {
             <small>MENTAL OPERATIONS</small>
             <h1>Session review</h1>
             <p>
-              {scored.length} answered · {accuracy}% accuracy · {average.toFixed(1)}s
-              average
+              {scored.length} answered ·{' '}
+              {scored.length
+                ? `${accuracy}% accuracy · ${average.toFixed(1)}s average`
+                : 'No accuracy or pace measured'}
             </p>
           </span>
         </div>
@@ -241,11 +287,23 @@ export default function OpsPage() {
               ))}
             </ul>
           ) : (
-            <p>{log.length ? 'No misses. Move to another operation or a mixed recall set.' : 'No answers recorded. Try an untimed drill to get started.'}</p>
+            <p>
+              {log.length
+                ? 'No misses. Move to another operation or a mixed recall set.'
+                : 'No answers recorded. Try an untimed drill to get started.'}
+            </p>
           )}
           <div>
-            <Button onClick={() => family && begin(family, 'ten')}>Drill again</Button>
-            <Button variant="outline" onClick={() => { setFamily(null); setStage('choose'); }}>
+            <Button onClick={() => family && begin(family, 'ten')}>
+              Drill again
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFamily(null);
+                setStage('choose');
+              }}
+            >
               Back to operations
             </Button>
             <Link href="/">Home</Link>
@@ -266,32 +324,41 @@ export default function OpsPage() {
           </span>
         </div>
         {status}
-        <section className="domain-grid" aria-label="Mental operation categories">
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map((key) => {
-            const meta = OPERATION_FAMILIES[key];
-            const Icon = ICONS[key];
-            return (
-              <button key={key} onClick={() => setFamily(key)} aria-label={meta.title}>
-                <header>
-                  <i className={meta.color}>
-                    <Icon />
-                  </i>
-                  <em>OPEN</em>
-                </header>
-                <span>
-                  <b>{meta.title}</b>
-                  <small>{meta.copy}</small>
-                </span>
-                <footer>
+        <section
+          className="domain-grid"
+          aria-label="Mental operation categories"
+        >
+          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+            (key) => {
+              const meta = OPERATION_FAMILIES[key];
+              const Icon = ICONS[key];
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFamily(key)}
+                  aria-label={meta.title}
+                >
+                  <header>
+                    <i className={meta.color}>
+                      <Icon />
+                    </i>
+                    <em>OPEN</em>
+                  </header>
                   <span>
-                    <small>BANK</small>
-                    <strong>{operationsByTopic(key).length} facts</strong>
+                    <b>{meta.title}</b>
+                    <small>{meta.copy}</small>
                   </span>
-                  <ChevronRight />
-                </footer>
-              </button>
-            );
-          })}
+                  <footer>
+                    <span>
+                      <small>BANK</small>
+                      <strong>{operationsByTopic(key).length} facts</strong>
+                    </span>
+                    <ChevronRight />
+                  </footer>
+                </button>
+              );
+            },
+          )}
         </section>
         <p>
           <Link href="/">← Back to PacePrep home</Link>
@@ -305,7 +372,14 @@ export default function OpsPage() {
     return (
       <main className="page practice-hub category-page">
         <nav className="practice-breadcrumb" aria-label="Breadcrumb">
-          <button onClick={() => { setFamily(null); setStage('choose'); }}>Operations</button>
+          <button
+            onClick={() => {
+              setFamily(null);
+              setStage('choose');
+            }}
+          >
+            Operations
+          </button>
           <ChevronRight />
           <span aria-current="page">{meta.title}</span>
         </nav>
@@ -318,7 +392,10 @@ export default function OpsPage() {
         </div>
         {status}
         <section className="category-mode-grid" aria-label="Session formats">
-          <button disabled={loading || !canStart} onClick={() => begin(family, 'ten')}>
+          <button
+            disabled={loading || !canStart}
+            onClick={() => begin(family, 'ten')}
+          >
             <i className={meta.color}>
               <Play />
             </i>
@@ -329,7 +406,10 @@ export default function OpsPage() {
             </span>
             <ChevronRight />
           </button>
-          <button disabled={loading || !canStart} onClick={() => begin(family, 'sprint')}>
+          <button
+            disabled={loading || !canStart}
+            onClick={() => begin(family, 'sprint')}
+          >
             <i className={meta.color}>
               <Clock3 />
             </i>
@@ -346,7 +426,7 @@ export default function OpsPage() {
   }
 
   return (
-    <div className="practicePage">
+    <main className="practicePage">
       <header className="practiceHead">
         <Link href="/" className="brand">
           <b>
@@ -374,7 +454,8 @@ export default function OpsPage() {
         <div className="quizline">
           <small>{meta.title}</small>
           <b className="session-score">
-            <Check size={15} /> {log.filter((item) => item.correct).length} correct
+            <Check size={15} /> {log.filter((item) => item.correct).length}{' '}
+            correct
           </b>
           <span>
             <Target size={14} /> Type
@@ -411,12 +492,19 @@ export default function OpsPage() {
                   type="button"
                   key={key}
                   disabled={!!result}
-                  onClick={() => setAnswer((value) => (value + key).slice(0, 12))}
+                  onClick={() =>
+                    setAnswer((value) => (value + key).slice(0, 12))
+                  }
                 >
                   {key}
                 </button>
               ))}
-              <button type="button" aria-label="Delete last digit" disabled={!!result} onClick={() => setAnswer((value) => value.slice(0, -1))}>
+              <button
+                type="button"
+                aria-label="Delete last digit"
+                disabled={!!result}
+                onClick={() => setAnswer((value) => value.slice(0, -1))}
+              >
                 ⌫
               </button>
             </div>
@@ -433,9 +521,7 @@ export default function OpsPage() {
                     {result.correct ? 'Correct. ' : 'Lock this in. '}
                     {result.strategy} — {(result.ms / 1000).toFixed(2)} sec
                   </b>
-                  {!result.correct && (
-                    <small>Correct answer: {result.a}</small>
-                  )}
+                  {!result.correct && <small>Correct answer: {result.a}</small>}
                 </span>
                 <button type="button" onClick={goNext}>
                   Next
@@ -444,12 +530,12 @@ export default function OpsPage() {
             )}
           </output>
         </div>
-        <p>
+        <div className="quiz-actions">
           <button type="button" onClick={skip} disabled={!!result}>
             Skip
           </button>
-        </p>
+        </div>
       </section>
-    </div>
+    </main>
   );
 }

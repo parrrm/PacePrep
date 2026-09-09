@@ -1,4 +1,5 @@
 import type { ProgressStore } from './progress-types';
+import { ProgressConflict } from './progress-conflict.ts';
 
 export async function openProgressStore(
   request: Request,
@@ -10,7 +11,8 @@ export async function openProgressStore(
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const authorization = request.headers.get('authorization');
-  if (!url || !key || !authorization || !/^Bearer [^\s]+$/i.test(authorization)) return null;
+  if (!url || !key || !authorization || !/^Bearer [^\s]+$/i.test(authorization))
+    return null;
   const headers = { apikey: key, Authorization: authorization };
   // Verify every request. Never trust a client user ID, an unverified JWT, or
   // the legacy Sites identity headers. Database requests also enforce RLS.
@@ -26,7 +28,11 @@ export async function openProgressStore(
     email?: unknown;
     user_metadata?: { full_name?: unknown };
   };
-  if (typeof account.id !== 'string' || !account.id || typeof account.email !== 'string')
+  if (
+    typeof account.id !== 'string' ||
+    !account.id ||
+    typeof account.email !== 'string'
+  )
     return null;
   const user = {
     userId: account.id,
@@ -41,20 +47,22 @@ export async function openProgressStore(
   const endpoint = `${url}/rest/v1/learner_progress`;
   const ownRecord = `${endpoint}?user_id=eq.${encodeURIComponent(user.userId)}`;
   async function query(path: string, init: RequestInit = {}) {
+    const queryHeaders = new Headers(headers);
+    queryHeaders.set('Content-Type', 'application/json');
+    new Headers(init.headers).forEach((value, key) =>
+      queryHeaders.set(key, value),
+    );
     const response = await fetch(path, {
       ...init,
       cache: 'no-store',
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]),
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-        ...init.headers,
-      },
+      headers: queryHeaders,
     });
+    if (response.status === 409) throw new ProgressConflict();
     if (!response.ok) throw new Error('Progress storage unavailable');
     return response;
   }
-  return {
+  const store: ProgressStore = {
     user,
     async read() {
       const response = await query(
@@ -68,23 +76,43 @@ export async function openProgressStore(
       return {
         progress: record?.progress ?? null,
         updatedAt: record?.updated_at ? Date.parse(record.updated_at) : null,
+        revision: record?.updated_at ?? null,
       };
     },
-    async write(progress) {
-      const now = Date.now();
-      await query(`${endpoint}?on_conflict=user_id`, {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({
-          user_id: user.userId,
-          progress,
-          updated_at: new Date(now).toISOString(),
-        }),
-      });
-      return now;
+    async write(progress, expectedRevision) {
+      const now = Math.max(
+        Date.now(),
+        expectedRevision ? Date.parse(expectedRevision) + 1 : 0,
+      );
+      const revision = new Date(now).toISOString();
+      const response = await query(
+        expectedRevision === null
+          ? endpoint
+          : `${ownRecord}&updated_at=eq.${encodeURIComponent(expectedRevision)}`,
+        {
+          method: expectedRevision === null ? 'POST' : 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify({
+            user_id: user.userId,
+            progress,
+            updated_at: revision,
+          }),
+        },
+      );
+      const rows = await response.json();
+      if (!Array.isArray(rows) || rows.length !== 1)
+        throw new ProgressConflict();
+      return { updatedAt: now, revision };
     },
     async remove() {
-      await query(ownRecord, { method: 'DELETE' });
+      const previous = await store.read();
+      const resetAt = Math.max(Date.now(), (previous.updatedAt ?? 0) + 1);
+      const saved = await store.write(
+        { resetAt, stats: {}, history: [], completedSessions: 0 },
+        previous.revision,
+      );
+      return { ...saved, resetAt };
     },
   };
+  return store;
 }

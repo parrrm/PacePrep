@@ -4,11 +4,11 @@ import {
   getAuthClient,
   getProgressAccount,
   prepareAccountStorage,
-  progressRequest,
+  openProgressClient,
 } from '@/lib/auth-client';
 import { progressStorageKey } from '@/lib/account-storage';
 import { isSavedProgress } from '@/lib/progress-validation';
-import { cloudAuthReady } from '@/lib/hosting';
+import { cloudAuthReady, onVercel } from '@/lib/hosting';
 import { signInHref, signOutHref, signInLabel } from '@/lib/hosting';
 import {
   BarChart3,
@@ -38,8 +38,20 @@ import {
   decimalSlip,
   questionsPerMinute,
 } from '@/lib/recall-math';
-import { FACTS, choices, shuffle, type Fact, type Topic } from '@/lib/recall-bank';
-import { mergeProgress, tryKey, updateStat, type Stat } from '@/lib/learning-progress';
+import {
+  FACTS,
+  choices,
+  shuffle,
+  type Fact,
+  type Topic,
+} from '@/lib/recall-bank';
+import {
+  comparableAttempts,
+  mergeProgress,
+  tryKey,
+  updateStat,
+  type Stat,
+} from '@/lib/learning-progress';
 import { InstallButton } from './pwa-provider';
 import { type BaselineAttempt } from '@/lib/baseline';
 import {
@@ -83,6 +95,7 @@ type AuthUser = {
 type AuthStatus = 'checking' | 'anonymous' | 'guest' | 'signed-in';
 type CloudStatus = 'idle' | 'saving' | 'saved' | 'error';
 type SavedProgress = {
+  resetAt?: number;
   stats?: Record<string, Stat>;
   history?: Try[];
   completedSessions?: number;
@@ -139,6 +152,10 @@ const day = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA'),
   };
 
 function answerHint(fact: Fact) {
+  if (fact.approximate)
+    return fact.reverse
+      ? 'Recall the fraction represented by this two-decimal approximation.'
+      : 'For repeating percentages, enter the first two decimal places without rounding (for example, 16.66%).';
   if (fact.a.includes(' ') && fact.a.includes('/'))
     return 'Enter a mixed number or an equivalent improper fraction (for example, 3 1/2 or 7/2).';
   if (fact.a.includes('/'))
@@ -360,9 +377,11 @@ function topConfusion(history: Try[]) {
   return [...counts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
 }
 export default function Home({ grokTest = false }: { grokTest?: boolean }) {
-  const progressAccount = useRef<{ userId: string | null; key: string } | null>(
-    null,
-  );
+  const progressAccount = useRef<{
+    userId: string | null;
+    key: string;
+    request: ReturnType<typeof openProgressClient>;
+  } | null>(null);
   const requestProgress = useCallback(
     (init: RequestInit = {}) => {
       if (grokTest)
@@ -371,7 +390,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
         );
       if (!progressAccount.current)
         throw new Error('Progress is still loading');
-      return progressRequest(init, progressAccount.current.userId);
+      return progressAccount.current.request(init);
     },
     [grokTest],
   );
@@ -382,6 +401,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     [stats, setStats] = useState<Record<string, Stat>>({}),
     [history, setHistory] = useState<Try[]>([]),
     [completedSessions, setCompletedSessions] = useState(0),
+    [resetAt, setResetAt] = useState(0),
     [ready, setReady] = useState(false),
     [loadError, setLoadError] = useState(false),
     [mode, setMode] = useState<Mode>('mixed'),
@@ -398,6 +418,9 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     } | null>(null),
     [input, setInput] = useState<'mcq' | 'typed'>('mcq'),
     [topic, setTopic] = useState<Topic>('fractions'),
+    [initialCategory, setInitialCategory] = useState<PracticeCategory | null>(
+      null,
+    ),
     [group, setGroup] = useState('All groups'),
     [left, setLeft] = useState(60),
     [authStatus, setAuthStatus] = useState<AuthStatus>('guest'),
@@ -439,7 +462,11 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       const storageKey = grokTest
         ? 'paceprep-grok-test'
         : progressStorageKey(userId);
-      progressAccount.current = { userId, key: storageKey };
+      progressAccount.current = {
+        userId,
+        key: storageKey,
+        request: openProgressClient(userId),
+      };
       try {
         const raw =
           localStorage.getItem(storageKey) ??
@@ -450,9 +477,12 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
         const parsed: unknown = JSON.parse(raw);
         if (!isSavedProgress(parsed)) throw new Error('Invalid local progress');
         const s = parsed as SavedProgress;
-        const pendingData: unknown = JSON.parse(sessionStorage.getItem('paceprep-pending-baseline') || '[]');
-        const pending = isSavedProgress({history: pendingData})
-          ? pendingData as BaselineAttempt[] : [];
+        const pendingData: unknown = JSON.parse(
+          sessionStorage.getItem('paceprep-pending-baseline') || '[]',
+        );
+        const pending = isSavedProgress({ history: pendingData })
+          ? (pendingData as BaselineAttempt[])
+          : [];
         if (Array.isArray(pending) && pending.length) {
           const baselineId = `baseline-${pending[0].at}`;
           const known = new Set((s.history || []).map(tryKey));
@@ -476,17 +506,42 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           ];
           if (fresh.some((item) => !item.skipped))
             s.completedSessions = (s.completedSessions || 0) + 1;
+          localStorage.setItem(storageKey, JSON.stringify(s));
           sessionStorage.removeItem('paceprep-pending-baseline');
         }
         localSnapshot.current = s;
         setStats(s.stats || {});
         setHistory(s.history || []);
         setCompletedSessions(s.completedSessions || 0);
+        setResetAt(s.resetAt || 0);
         setDark(!!s.dark);
         setInput(s.input === 'typed' ? 'typed' : 'mcq');
       } catch {
         setLoadError(true);
         return;
+      }
+      const requestedCategory = new URLSearchParams(window.location.search).get(
+        'practice',
+      );
+      if (
+        requestedCategory &&
+        ['fractions', 'tables', 'powers', 'percentages', 'all'].includes(
+          requestedCategory,
+        )
+      ) {
+        setInitialCategory(
+          requestedCategory === 'all'
+            ? null
+            : (requestedCategory as PracticeCategory),
+        );
+        setTopic(
+          requestedCategory === 'tables'
+            ? 'tables'
+            : requestedCategory === 'powers'
+              ? 'squares'
+              : 'fractions',
+        );
+        setView('practiceHub');
       }
       setReady(true);
     }, 0);
@@ -519,6 +574,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     document.documentElement.classList.toggle('dark', dark);
     if (ready) {
       const snapshot = {
+        resetAt,
         stats,
         history: history.slice(-1500),
         completedSessions,
@@ -527,16 +583,66 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       };
       localSnapshot.current = snapshot;
       try {
+        const stored: unknown = JSON.parse(
+          localStorage.getItem(progressAccount.current!.key) || '{}',
+        );
+        if (!isSavedProgress(stored))
+          throw new Error('Invalid stored progress');
+        const merged = mergeProgress(snapshot, stored as SavedProgress);
+        const nextSnapshot = {
+          resetAt: merged.resetAt || 0,
+          stats: merged.stats || {},
+          history: merged.history || [],
+          completedSessions: merged.completedSessions || 0,
+          dark: merged.dark ?? dark,
+          input: merged.input ?? input,
+        };
+        localSnapshot.current = nextSnapshot;
         localStorage.setItem(
           progressAccount.current!.key,
-          JSON.stringify(snapshot),
+          JSON.stringify(nextSnapshot),
         );
+        if (JSON.stringify(nextSnapshot) !== JSON.stringify(snapshot))
+          queueMicrotask(() => {
+            setStats(nextSnapshot.stats);
+            setHistory(nextSnapshot.history);
+            setCompletedSessions(nextSnapshot.completedSessions);
+            setResetAt(nextSnapshot.resetAt);
+          });
         queueMicrotask(() => setLocalSaveError(false));
       } catch {
         queueMicrotask(() => setLocalSaveError(true));
       }
     }
-  }, [stats, history, completedSessions, dark, input, ready]);
+  }, [stats, history, completedSessions, resetAt, dark, input, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    function receiveProgress(event: StorageEvent) {
+      if (event.key !== progressAccount.current?.key || !event.newValue) return;
+      try {
+        const incoming: unknown = JSON.parse(event.newValue);
+        if (!isSavedProgress(incoming)) return;
+        const current = localSnapshot.current;
+        const merged = mergeProgress(current, incoming as SavedProgress);
+        if ((merged.resetAt || 0) > (current.resetAt || 0)) {
+          answerLocked.current = true;
+          if (advanceTimer.current) clearTimeout(advanceTimer.current);
+          advanceAction.current = null;
+          setSession([]);
+          setView('dashboard');
+        }
+        localSnapshot.current = merged;
+        setStats(merged.stats || {});
+        setHistory(merged.history || []);
+        setCompletedSessions(merged.completedSessions || 0);
+        setResetAt(merged.resetAt || 0);
+      } catch {
+        setLocalSaveError(true);
+      }
+    }
+    window.addEventListener('storage', receiveProgress);
+    return () => window.removeEventListener('storage', receiveProgress);
+  }, [ready]);
   useEffect(() => {
     const reconnect = () => setSyncTick((value) => value + 1);
     window.addEventListener('online', reconnect);
@@ -549,7 +655,8 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       .then(async (response) => {
         if (!active) return;
         if (response.status === 401) {
-          if (progressAccount.current?.userId) throw new Error('Session expired');
+          if (progressAccount.current?.userId)
+            throw new Error('Session expired');
           setAuthUser(null);
           setCloudReady(false);
           setAuthStatus('guest');
@@ -561,14 +668,24 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           progress: SavedProgress | null;
         };
         if (!active) return;
-        if (payload.user?.userId !== progressAccount.current?.userId ||
-          (payload.progress !== null && !isSavedProgress(payload.progress)))
+        if (
+          payload.user?.userId !== progressAccount.current?.userId ||
+          (payload.progress !== null && !isSavedProgress(payload.progress))
+        )
           throw new Error('Invalid account progress');
         setAuthUser(payload.user);
         const merged = mergeProgress(localSnapshot.current, payload.progress);
         setStats(merged.stats || {});
         setHistory(merged.history || []);
         setCompletedSessions(merged.completedSessions || 0);
+        setResetAt(merged.resetAt || 0);
+        if ((merged.resetAt || 0) > (localSnapshot.current.resetAt || 0)) {
+          answerLocked.current = true;
+          if (advanceTimer.current) clearTimeout(advanceTimer.current);
+          advanceAction.current = null;
+          setSession([]);
+          setView('dashboard');
+        }
         setDark(!!merged.dark);
         setInput(merged.input === 'typed' ? 'typed' : 'mcq');
         setCloudReady(true);
@@ -596,22 +713,22 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     const id = window.setTimeout(() => {
       if (deletingProgress.current) return;
       setCloudStatus('saving');
-      cloudSave.current = (cloudSave.current ?? Promise.resolve()).then(async () => {
-        if (deletingProgress.current) return;
-        const response = await requestProgress({
+      cloudSave.current = requestProgress({
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          resetAt,
           stats,
           history: history.slice(-1500),
           completedSessions,
           dark,
           input,
         }),
-        });
-        if (!response.ok) throw new Error('Cloud save failed');
-        setCloudStatus('saved');
       })
+        .then((response) => {
+          if (!response.ok) throw new Error('Cloud save failed');
+          setCloudStatus('saved');
+        })
         .catch(() => setCloudStatus('error'));
     }, 700);
     return () => window.clearTimeout(id);
@@ -619,6 +736,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     stats,
     history,
     completedSessions,
+    resetAt,
     dark,
     input,
     ready,
@@ -799,12 +917,15 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       )
     )
       return;
+    let nextResetAt = Math.max(Date.now(), resetAt + 1);
     if (authUser) {
       deletingProgress.current = true;
       try {
         await cloudSave.current;
         const response = await requestProgress({ method: 'DELETE' });
         if (!response.ok) throw new Error('Delete failed');
+        const payload = (await response.json()) as { resetAt: number };
+        nextResetAt = payload.resetAt;
       } catch {
         deletingProgress.current = false;
         setCloudStatus('error');
@@ -814,8 +935,25 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     setStats({});
     setHistory([]);
     setCompletedSessions(0);
+    setResetAt(nextResetAt);
     setCloudStatus('saved');
-    localStorage.removeItem(progressAccount.current!.key);
+    const resetSnapshot = {
+      resetAt: nextResetAt,
+      stats: {},
+      history: [],
+      completedSessions: 0,
+      dark,
+      input,
+    };
+    localSnapshot.current = resetSnapshot;
+    try {
+      localStorage.setItem(
+        progressAccount.current!.key,
+        JSON.stringify(resetSnapshot),
+      );
+    } catch {
+      setLocalSaveError(true);
+    }
     if (!progressAccount.current!.userId && !grokTest)
       localStorage.removeItem(LEGACY_STORAGE_KEY);
     setProfileOpen(false);
@@ -994,17 +1132,45 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     mastered = FACTS.filter(
       (f) => level(stats[f.id], TOPICS[f.topic].target) === 'Mastered',
     ).length;
-  if (loadError) return (
-    <main className="page operation-empty">
-      <h1>Your progress needs attention</h1>
-      <p>We could not safely load your account or saved history. Your existing data has been preserved.</p>
-      <Button onClick={() => window.location.reload()}>Reload and retry</Button>
-      <Link href="/practice">Back to practice hub</Link>
-    </main>
-  );
-  if (!ready) return <main className="gateway-loading"><output>Loading your progress…</output></main>;
+  if (loadError)
+    return (
+      <main className="page operation-empty">
+        <h1>Your progress needs attention</h1>
+        <p>
+          We could not safely load your account or saved history. Your existing
+          data has been preserved.
+        </p>
+        <Button onClick={() => window.location.reload()}>
+          Reload and retry
+        </Button>
+        <Link href="/practice">Back to practice hub</Link>
+      </main>
+    );
+  if (!ready)
+    return (
+      <main className="gateway-loading">
+        <output>Loading your progress…</output>
+      </main>
+    );
   return (
     <main>
+      {cloudStatus === 'error' && (
+        <div className="sync-recovery" role="alert">
+          <span>
+            Cloud sync needs attention. Your local progress is preserved.
+          </span>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setCloudReady(false);
+              setCloudStatus('saving');
+              setSyncTick((value) => value + 1);
+            }}
+          >
+            Retry sync
+          </Button>
+        </div>
+      )}
       {grokTest && (
         <output className="grok-test-banner">
           Grok QA mode · isolated guest progress ·{' '}
@@ -1055,6 +1221,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       )}{' '}
       {view === 'practiceHub' && (
         <PracticeHub
+          initialCategory={initialCategory}
           start={start}
           startCategory={startCategory}
           stats={stats}
@@ -1272,10 +1439,16 @@ function ProfilePanel({
         ) : (
           <p>
             Your progress is stored on this device.{' '}
-            <Link href={signInHref} target="_top">
-              {signInLabel}
-            </Link>{' '}
-            to keep it across devices.
+            {onVercel && !cloudAuthReady ? (
+              'Cloud sync is not available in this preview yet.'
+            ) : (
+              <>
+                <Link href={signInHref} target="_top">
+                  {signInLabel}
+                </Link>{' '}
+                to keep it across devices.
+              </>
+            )}
           </p>
         )}
         <div className="preference-row">
@@ -1293,12 +1466,14 @@ function ProfilePanel({
           <fieldset aria-label="Default answer mode">
             <button
               className={input === 'mcq' ? 'active' : ''}
+              aria-pressed={input === 'mcq'}
               onClick={() => setInput('mcq')}
             >
               Choices
             </button>
             <button
               className={input === 'typed' ? 'active' : ''}
+              aria-pressed={input === 'typed'}
               onClick={() => setInput('typed')}
             >
               Type
@@ -1353,13 +1528,14 @@ function HomeDashboard({
   const scoredHistory = history.filter((item) => !item.skipped);
   const streak = practiceStreak(history);
   const recent = scoredHistory.slice(-20);
-  const prior = scoredHistory.slice(-40, -20);
-  const accuracyDelta = prior.length
-    ? accuracy(recent) - accuracy(prior)
-    : null;
-  const speedDelta = prior.length
-    ? (average(prior) - average(recent)) / 1000
-    : null;
+  const comparable = comparableAttempts(scoredHistory);
+  const prior = comparable.before;
+  const accuracyDelta =
+    prior.length >= 5 ? accuracy(comparable.now) - accuracy(prior) : null;
+  const speedDelta =
+    prior.length >= 5
+      ? (average(prior) - average(comparable.now)) / 1000
+      : null;
   const scoreFor = (predicate: (fact: Fact) => boolean) => {
     const facts = FACTS.filter(predicate);
     if (!facts.length) return 0;
@@ -1426,7 +1602,10 @@ function HomeDashboard({
   const trendText = (value: number | null, suffix: string) =>
     value === null
       ? 'Baseline forming'
-      : (value >= 0 ? '+' : '') + value.toFixed(1) + suffix + ' vs prior 20';
+      : (value >= 0 ? '+' : '') +
+        value.toFixed(1) +
+        suffix +
+        ' on matching facts';
 
   return (
     <div className="page home-dashboard dashboard-v4">
@@ -1536,7 +1715,7 @@ function HomeDashboard({
                 : Math.abs(speedDelta).toFixed(1) +
                   's ' +
                   (speedDelta >= 0 ? 'faster' : 'slower') +
-                  ' vs prior 20'}
+                  ' on matching facts'}
             </em>
           </span>
         </article>
@@ -1650,6 +1829,7 @@ function HomeDashboard({
 }
 
 function PracticeHub({
+  initialCategory,
   start,
   startCategory,
   stats,
@@ -1658,6 +1838,7 @@ function PracticeHub({
   group,
   setGroup,
 }: {
+  initialCategory: PracticeCategory | null;
   start: (m: Mode) => void;
   startCategory: (
     category: PracticeCategory,
@@ -1670,7 +1851,9 @@ function PracticeHub({
   group: string;
   setGroup: (g: string) => void;
 }) {
-  const [selected, setSelected] = useState<PracticeCategory | null>(null);
+  const [selected, setSelected] = useState<PracticeCategory | null>(
+    initialCategory,
+  );
   const categoryFacts = (key: PracticeCategory) =>
     FACTS.filter((fact) =>
       key === 'tables'
@@ -1856,7 +2039,17 @@ function PracticeHub({
             <button
               key={key}
               className={needsWork ? 'needs-work' : ''}
-              onClick={() => setSelected(key)}
+              onClick={() => {
+                setSelected(key);
+                setTopic(
+                  key === 'tables'
+                    ? 'tables'
+                    : key === 'powers'
+                      ? 'squares'
+                      : 'fractions',
+                );
+                setGroup('All groups');
+              }}
               aria-label={
                 meta.title +
                 ', ' +
@@ -2491,7 +2684,7 @@ function Summary({
           </div>
           <div className="sumdetail">
             <div>
-              <small>WEAKEST TOPIC</small>
+              <small>TOPIC TO KEEP PRACTISING</small>
               <b>
                 {topics[0] ? TOPICS[topics[0].t].name : 'No weak topic yet'}
               </b>
@@ -2698,10 +2891,11 @@ function ProgressImpact({
   history: Try[];
   start: (mode: Mode) => void;
 }) {
-  const sampleSize = Math.min(20, Math.floor(history.length / 2)),
+  const comparison = comparableAttempts(history),
+    sampleSize = comparison.before.length,
     hasComparison = sampleSize >= 5,
-    baseline = hasComparison ? history.slice(0, sampleSize) : [],
-    current = hasComparison ? history.slice(-sampleSize) : [],
+    baseline = hasComparison ? comparison.before : [],
+    current = hasComparison ? comparison.now : [],
     accuracyGain = hasComparison ? accuracy(current) - accuracy(baseline) : 0,
     paceGain = hasComparison
       ? (average(baseline) - average(current)) / 1000
@@ -2750,7 +2944,7 @@ function ProgressImpact({
         </span>
         <em>
           {hasComparison
-            ? `Comparing ${sampleSize} early vs recent answers`
+            ? `Comparing ${sampleSize} matching facts`
             : 'Benchmark in progress'}
         </em>
       </div>
@@ -2825,8 +3019,8 @@ function ProgressImpact({
               </b>
               <p>
                 {hasComparison && paceGain > 0
-                  ? 'Projection uses your measured early-to-recent response-time improvement; it is not an exam-score prediction.'
-                  : 'A comparison unlocks after five early and five recent answers.'}
+                  ? 'Illustration based on matching facts in the same answer mode across sessions. This is not an exam-score prediction.'
+                  : 'Repeat at least five facts in the same answer mode in a later session to unlock a comparison.'}
               </p>
             </span>
           </div>

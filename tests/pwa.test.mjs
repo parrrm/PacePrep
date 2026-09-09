@@ -51,6 +51,7 @@ test('service worker never intercepts APIs, auth, writes, or other origins', () 
 });
 test('offline navigation serves only the public reconnect shell', async () => {
   const listeners = {};
+  /** @type {Promise<Response>} */
   let response;
   vm.runInNewContext(
     fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8'),

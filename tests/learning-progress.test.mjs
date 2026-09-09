@@ -5,18 +5,32 @@ import { answersMatch } from '../lib/recall-math.ts';
 import { updateStat, mergeProgress, DAY_MS } from '../lib/learning-progress.ts';
 import { createOperationProgress } from '../lib/ops-progress.ts';
 
-const attempt = (at = 1000, id = 't17-8') => ({ id, topic: 'tables', q: '17 × 8', a: '136', raw: '136', correct: true, ms: 1000, at, sessionId: `s${at}` });
+const attempt = (at = 1000, id = 't17-8') => ({
+  id,
+  topic: 'tables',
+  q: '17 × 8',
+  a: '136',
+  raw: '136',
+  correct: true,
+  ms: 1000,
+  at,
+  sessionId: `s${at}`,
+});
 
 test('every bank fact has an explicit direction and exactly one correct MCQ option', () => {
-  assert.equal(new Set(FACTS.map(f => f.id)).size, FACTS.length);
+  assert.equal(new Set(FACTS.map((f) => f.id)).size, FACTS.length);
   for (const fact of FACTS) {
     assert.equal(typeof fact.reverse, 'boolean', fact.id);
     const options = choices(fact);
     assert.equal(options.length, 4, fact.id);
-    assert.equal(options.filter(o => answersMatch(o, fact.a)).length, 1, fact.id);
+    assert.equal(
+      options.filter((o) => answersMatch(o, fact.a)).length,
+      1,
+      fact.id,
+    );
     assert.equal(new Set(options).size, 4, fact.id);
   }
-  assert.ok(FACTS.some(f => f.topic === 'tables' && f.reverse === false));
+  assert.ok(FACTS.some((f) => f.topic === 'tables' && f.reverse === false));
 });
 
 test('scheduling starts at one day and advances only when a review is due', () => {
@@ -44,8 +58,19 @@ test('old offline answers add totals without moving a newer review schedule back
 test('merging overlapping snapshots is idempotent and preserves separate facts', () => {
   const a = attempt();
   const b = attempt(2000, 's27');
-  const local = { history: [a, b], stats: { [a.id]: updateStat(undefined,true,a.ms,a.at), [b.id]: updateStat(undefined,true,b.ms,b.at) }, completedSessions: 2 };
-  const cloud = { history: [a], stats: { [a.id]: updateStat(undefined,true,a.ms,a.at) }, completedSessions: 1 };
+  const local = {
+    history: [a, b],
+    stats: {
+      [a.id]: updateStat(undefined, true, a.ms, a.at),
+      [b.id]: updateStat(undefined, true, b.ms, b.at),
+    },
+    completedSessions: 2,
+  };
+  const cloud = {
+    history: [a],
+    stats: { [a.id]: updateStat(undefined, true, a.ms, a.at) },
+    completedSessions: 1,
+  };
   const result = mergeProgress(local, cloud);
   assert.equal(result.history.length, 2);
   assert.equal(result.stats[a.id].attempts, 1);
@@ -54,12 +79,26 @@ test('merging overlapping snapshots is idempotent and preserves separate facts',
 });
 
 test('operation progress writes only its account and serializes cloud saves', async () => {
-  const values = new Map([['paceprep-progress:bob', JSON.stringify({completedSessions: 9})]]);
-  const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v) };
+  const values = new Map([
+    ['paceprep-progress:bob', JSON.stringify({ completedSessions: 9 })],
+  ]);
+  const storage = {
+    getItem: (k) => values.get(k) ?? null,
+    setItem: (k, v) => values.set(k, v),
+  };
   let release;
-  const first = new Promise(resolve => { release = resolve; });
+  const first = new Promise((resolve) => {
+    release = resolve;
+  });
   const saved = [];
-  const session = createOperationProgress('alice', storage, async snapshot => { if (!saved.length) await first; saved.push(snapshot); });
+  const session = createOperationProgress(
+    'alice',
+    storage,
+    async (snapshot) => {
+      if (!saved.length) await first;
+      saved.push(snapshot);
+    },
+  );
   session.record(attempt());
   session.record(attempt(2000));
   session.complete();
@@ -67,15 +106,50 @@ test('operation progress writes only its account and serializes cloud saves', as
   assert.equal(saved.length, 0);
   release();
   await session.flush();
-  assert.deepEqual(saved.map(s => s.history.length), [1,2,2]);
-  assert.equal(JSON.parse(values.get('paceprep-progress:alice')).completedSessions, 1);
-  assert.equal(JSON.parse(values.get('paceprep-progress:bob')).completedSessions, 9);
+  assert.deepEqual(
+    saved.map((s) => s.history.length),
+    [1, 2, 2],
+  );
+  assert.equal(
+    JSON.parse(values.get('paceprep-progress:alice')).completedSessions,
+    1,
+  );
+  assert.equal(
+    JSON.parse(values.get('paceprep-progress:bob')).completedSessions,
+    9,
+  );
   assert.equal(values.has('paceprep-progress'), false);
 });
 
 test('malformed local progress is preserved and rejected, not overwritten', () => {
   const values = new Map([['paceprep-progress', '{broken']]);
-  const storage = { getItem: k => values.get(k), setItem: (k,v) => values.set(k,v) };
+  const storage = {
+    getItem: (k) => values.get(k),
+    setItem: (k, v) => values.set(k, v),
+  };
   assert.throws(() => createOperationProgress(null, storage, async () => {}));
   assert.equal(values.get('paceprep-progress'), '{broken');
+});
+
+test('progress comparisons pair the same fact and input mode across sessions', async () => {
+  const { comparableAttempts } = await import('../lib/learning-progress.ts');
+  const a = { ...attempt(1000), answerMode: 'typed' };
+  const different = { ...attempt(2000, 's27'), answerMode: 'typed' };
+  const sameSession = { ...a, at: 3000, ms: 200 };
+  const differentMode = { ...a, at: 4000, sessionId: 's4', answerMode: 'mcq' };
+  assert.equal(
+    comparableAttempts([a, different, sameSession, differentMode]).before
+      .length,
+    0,
+  );
+  const later = { ...a, at: 5000, sessionId: 's5', ms: 800 };
+  const result = comparableAttempts([
+    a,
+    different,
+    sameSession,
+    differentMode,
+    later,
+  ]);
+  assert.deepEqual(result.before, [a]);
+  assert.deepEqual(result.now, [later]);
 });

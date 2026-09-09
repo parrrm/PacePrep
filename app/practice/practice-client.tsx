@@ -22,28 +22,28 @@ import { operationsByTopic } from '@/lib/mental-ops';
 
 const RECALL = [
   {
-    href: '/',
+    href: '/?practice=fractions',
     title: 'Fractions',
     copy: 'Recognise and reconstruct simplified fraction forms.',
     icon: BookOpen,
     color: 'violet',
   },
   {
-    href: '/',
+    href: '/?practice=tables',
     title: 'Tables',
     copy: 'Tables 12-30 with multiplication and division recall.',
     icon: Grid3X3,
     color: 'blue',
   },
   {
-    href: '/',
+    href: '/?practice=powers',
     title: 'Squares and cubes',
     copy: 'Roots and powers in both directions.',
     icon: Brain,
     color: 'amber',
   },
   {
-    href: '/',
+    href: '/?practice=percentages',
     title: 'Percentages',
     copy: 'Exact banking-exam fraction-percentage pairs.',
     icon: Zap,
@@ -79,25 +79,28 @@ export default function PracticeHubPage() {
           {RECALL.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.title} href={item.href}>
-                <button type="button" aria-label={item.title}>
-                  <header>
-                    <i className={item.color}>
-                      <Icon />
-                    </i>
-                  </header>
+              <Link
+                key={item.title}
+                href={item.href}
+                className="practice-category-link"
+                aria-label={item.title}
+              >
+                <header>
+                  <i className={item.color}>
+                    <Icon />
+                  </i>
+                </header>
+                <span>
+                  <b>{item.title}</b>
+                  <small>{item.copy}</small>
+                </span>
+                <footer>
                   <span>
-                    <b>{item.title}</b>
-                    <small>{item.copy}</small>
+                    <small>TRAINER</small>
+                    <strong>Open</strong>
                   </span>
-                  <footer>
-                    <span>
-                      <small>TRAINER</small>
-                      <strong>Open</strong>
-                    </span>
-                    <ChevronRight />
-                  </footer>
-                </button>
+                  <ChevronRight />
+                </footer>
               </Link>
             );
           })}
@@ -110,13 +113,21 @@ export default function PracticeHubPage() {
           <h2 id="mental-ops-title">{PRACTICE_HUB_COPY.opsTitle}</h2>
           <p>{PRACTICE_HUB_COPY.opsIntro}</p>
         </header>
-        <section className="domain-grid" aria-label="Mental operation categories">
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map((key) => {
-            const meta = OPERATION_FAMILIES[key];
-            const Icon = ICONS[key];
-            return (
-              <Link key={key} href="/ops">
-                <button type="button" aria-label={meta.title + ' mental operations'}>
+        <section
+          className="domain-grid"
+          aria-label="Mental operation categories"
+        >
+          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+            (key) => {
+              const meta = OPERATION_FAMILIES[key];
+              const Icon = ICONS[key];
+              return (
+                <Link
+                  key={key}
+                  href={`/ops?family=${key}`}
+                  className="practice-category-link"
+                  aria-label={meta.title + ' mental operations'}
+                >
                   <header>
                     <i className={meta.color}>
                       <Icon />
@@ -134,10 +145,10 @@ export default function PracticeHubPage() {
                     </span>
                     <ChevronRight />
                   </footer>
-                </button>
-              </Link>
-            );
-          })}
+                </Link>
+              );
+            },
+          )}
         </section>
       </section>
 
@@ -153,7 +164,7 @@ export default function PracticeHubPage() {
           </span>
         </span>
         <div>
-          <Link href="/">Open recall trainer</Link>
+          <Link href="/?practice=all">Open recall trainer</Link>
           <Link href="/ops">Open operations</Link>
         </div>
       </section>

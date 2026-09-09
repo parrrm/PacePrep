@@ -82,9 +82,10 @@ export default function PrivacyPage() {
         <p>
           Signed-in progress is retained while your PacePrep record remains
           active. Use Profile → Delete progress to remove the cloud progress
-          record and this device&apos;s local record. Operational backups or
-          logs, if any, may expire according to the hosting provider&apos;s
-          retention controls.
+          history on this device and in the cloud. A minimal account-linked
+          reset timestamp is retained so older devices cannot restore deleted
+          history. Operational backups or logs, if any, may expire according to
+          the hosting provider&apos;s retention controls.
         </p>
       </section>
       <section className="info-notice">

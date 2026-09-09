@@ -7,7 +7,14 @@ export type Learner = {
 
 export type ProgressStore = {
   user: Learner;
-  read(): Promise<{ progress: unknown; updatedAt: number | null }>;
-  write(progress: unknown): Promise<number>;
-  remove(): Promise<void>;
+  read(): Promise<{
+    progress: unknown;
+    updatedAt: number | null;
+    revision: string | null;
+  }>;
+  write(
+    progress: unknown,
+    revision: string | null,
+  ): Promise<{ updatedAt: number; revision: string }>;
+  remove(): Promise<{ updatedAt: number; revision: string; resetAt: number }>;
 };

@@ -16,7 +16,7 @@ const browser = await chromium.launch({
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
 });
-await context.route('**/api/progress', (route) =>
+await context.route('**/api/progress*', (route) =>
   route.fulfill({
     status: 401,
     contentType: 'application/json',
@@ -139,7 +139,7 @@ try {
   const mobile = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
-  await mobile.route('**/api/progress', (route) =>
+  await mobile.route('**/api/progress*', (route) =>
     route.fulfill({ status: 401, body: '{}' }),
   );
   const phone = await mobile.newPage();
@@ -188,27 +188,83 @@ try {
     await phone.getByRole('heading', { name: /A quick reconnect/ }).waitFor();
   }
   assert.deepEqual(errors, []);
-  const account = await browser.newContext();
-  const methods = [];
-  const saved = { history: [{ ...BASELINE_FACTS[0], raw: '43.75%', correct: true, ms: 2000, at: Date.now(), answerMode: 'mcq' }], stats: {}, completedSessions: 1 };
-  await account.route('**/api/progress', (route) => {
-    methods.push(route.request().method());
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route.request().method() === 'GET' ? { user: { userId: 'test-user', displayName: 'Test learner', email: 'test@example.invalid', fullName: null }, progress: saved } : { saved: true, deleted: true }) });
-  });
-  const signed = await account.newPage();
-  await signed.goto(origin);
-  await signed.locator('.dashboard-scoreboard').waitFor();
-  await signed.getByRole('button', { name: 'Open learner profile and settings' }).click();
-  await signed.getByRole('heading', { name: 'Test learner' }).waitFor();
-  signed.once('dialog', (dialog) => dialog.accept());
-  await signed.getByRole('button', { name: 'Delete progress', exact: true }).click();
-  await signed.getByRole('dialog').waitFor({ state: 'hidden' });
-  await signed.waitForTimeout(1000);
-  assert.ok(methods.includes('DELETE'));
-  assert.equal(methods.slice(methods.indexOf('DELETE') + 1).includes('PUT'), false, 'Autosave must not recreate a deleted progress record');
-  await account.close();
+  // Sites authenticates through its identity endpoint. Vercel requires a real
+  // Supabase session; an API mock must never be mistaken for testing that flow.
+  if (process.env.PACEPREP_TEST_SITES_AUTH === '1') {
+    const account = await browser.newContext();
+    const methods = [];
+    let saved = {
+      history: [
+        {
+          ...BASELINE_FACTS[0],
+          raw: '43.75%',
+          correct: true,
+          ms: 2000,
+          at: Date.now(),
+          answerMode: 'mcq',
+        },
+      ],
+      stats: {},
+      completedSessions: 1,
+    };
+    let revision = '1';
+    const user = {
+      userId: 'test-user',
+      displayName: 'Test learner',
+      email: 'test@example.invalid',
+      fullName: null,
+    };
+    await account.route('**/api/progress*', (route) => {
+      const request = route.request();
+      const method = request.method();
+      methods.push(method);
+      const identity = new URL(request.url()).searchParams.has('identity');
+      let body;
+      if (method === 'GET')
+        body = identity ? { user } : { user, progress: saved, revision };
+      else if (method === 'DELETE') {
+        const resetAt = Date.now();
+        revision = String(Number(revision) + 1);
+        saved = { resetAt, stats: {}, history: [], completedSessions: 0 };
+        body = { deleted: true, revision, resetAt };
+      } else {
+        assert.equal(request.headers()['if-match'], revision);
+        revision = String(Number(revision) + 1);
+        saved = request.postDataJSON();
+        body = { saved: true, revision };
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+    });
+    const signed = await account.newPage();
+    await signed.goto(origin);
+    await signed.locator('.dashboard-scoreboard').waitFor();
+    await signed
+      .getByRole('button', { name: 'Open learner profile and settings' })
+      .click();
+    await signed.getByRole('heading', { name: 'Test learner' }).waitFor();
+    signed.once('dialog', (dialog) => dialog.accept());
+    await signed
+      .getByRole('button', { name: 'Delete progress', exact: true })
+      .click();
+    await signed.getByRole('dialog').waitFor({ state: 'hidden' });
+    await signed.waitForTimeout(1000);
+    assert.ok(methods.includes('DELETE'));
+    assert.equal(
+      methods.slice(methods.indexOf('DELETE') + 1).includes('PUT'),
+      false,
+      'Autosave must not recreate a deleted progress record',
+    );
+    await account.close();
+  } else
+    console.log(
+      'SKIP: mocked Sites account journey; set PACEPREP_TEST_SITES_AUTH=1 against a Sites build. Real Supabase auth needs separate credentials.',
+    );
   console.log(
-    'PASS: live baseline, consent/save/deduplication, honest weak filtering, profile focus, category drill, feedback, summary disclosure, timer cleanup, mobile layout, install help, offline fallback, deletion/autosave safety.',
+    'PASS: live baseline, consent/save/deduplication, honest weak filtering, profile focus, category drill, feedback, summary disclosure, timer cleanup, mobile layout, install help. Offline fallback runs only on port 8787; mocked deletion runs only with PACEPREP_TEST_SITES_AUTH=1.',
   );
   await mobile.close();
 } catch (error) {

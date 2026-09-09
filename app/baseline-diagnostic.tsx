@@ -106,6 +106,10 @@ export default function BaselineDiagnostic({
     function keydown(event: KeyboardEvent) {
       if (
         stage !== 'running' ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.repeat ||
         /INPUT|TEXTAREA|SELECT/.test((event.target as HTMLElement)?.tagName)
       )
         return;
@@ -192,7 +196,9 @@ export default function BaselineDiagnostic({
               ? 'Try 12 varied facts. Find your pace and your first training priority.'
               : 'Choose the answer. Accuracy matters more than speed.'}
           </p>
-          <div className="baseline-question">{fact.q}</div>
+          <div className="baseline-question" aria-live="polite">
+            {fact.q}
+          </div>
           {stage === 'ready' ? (
             <>
               <Button onClick={begin} disabled={!hydrated}>

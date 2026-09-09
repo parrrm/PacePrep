@@ -1,7 +1,17 @@
 /** Compare typed fractions/decimals without floating-point rounding or tolerance. */
 export function rational(raw: string, asPercent = false) {
-  let value = raw.trim().replace(/,/g, '');
+  let value = raw.trim();
   if (!value || value.length > 80) return null;
+  if (value.includes(',')) {
+    // Accept conventional western/Indian digit grouping, never misplaced commas.
+    if (
+      !/^-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})+,\d{3})(?:\.\d+)?%?$/.test(
+        value,
+      )
+    )
+      return null;
+    value = value.replace(/,/g, '');
+  }
   const percent = value.endsWith('%');
   if (percent) value = value.slice(0, -1).trim();
   const mixed = value.match(/^(-?\d+)\s+(\d+)\s*\/\s*(\d+)$/);
@@ -38,7 +48,10 @@ export function answersMatch(raw: string, expected: string) {
 }
 
 export function decimalSlip(raw: string, expected: string) {
-  const typed = rational(raw, expected.endsWith('%') && !raw.endsWith('%'));
+  const typed = rational(
+    raw,
+    expected.trim().endsWith('%') && !raw.trim().endsWith('%'),
+  );
   const target = rational(expected);
   if (!typed || !target || !typed.n || !target.n) return false;
   return [10n, 100n, 1000n].some(
@@ -49,5 +62,10 @@ export function decimalSlip(raw: string, expected: string) {
 }
 
 export function questionsPerMinute(answered: number, elapsedMs: number) {
-  return elapsedMs > 0 ? (answered * 60_000) / elapsedMs : 0;
+  return Number.isFinite(answered) &&
+    answered >= 0 &&
+    Number.isFinite(elapsedMs) &&
+    elapsedMs > 0
+    ? (answered * 60_000) / elapsedMs
+    : 0;
 }

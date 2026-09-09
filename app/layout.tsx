@@ -38,7 +38,6 @@ export const metadata: Metadata = {
     'fraction percentage practice',
     'multiplication tables practice',
   ],
-  alternates: { canonical: '/' },
   robots: { index: process.env.VERCEL_ENV !== 'preview', follow: true },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'PacePrep', statusBarStyle: 'default' },
@@ -47,7 +46,6 @@ export const metadata: Metadata = {
     title: 'PacePrep — Mental Math Recall Training for Banking Exams',
     description:
       'Build instant, accurate recall for SBI PO and IBPS PO quantitative aptitude.',
-    url: '/',
     siteName: 'PacePrep',
     type: 'website',
     images: [

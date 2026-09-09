@@ -7,4 +7,4 @@ Before editing, read TASK_PROGRESS.md, inspect git status and recent commits, an
 - Question grading, distractors, scheduling, history merging and timers are core logic. Add meaningful regression tests for changes.
 - Run `pnpm exec tsc --noEmit`, `pnpm lint:all`, `pnpm test`, `pnpm build:vercel` and appropriate browser checks; also attempt the Sites build. Record actual results, including blockers.
 - Keep secrets out of logs, source, artifacts and git. Document environment variable names only.
-- Resolve the Vercel production-domain mismatch documented in TASK_PROGRESS.md before changing aliases or asserting production was updated.
+- Preserve both verified Vercel aliases documented in TASK_PROGRESS.md. A push to main triggers production deployment; use a review branch for unfinished changes.

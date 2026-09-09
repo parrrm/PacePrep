@@ -6,7 +6,7 @@ import { SiteLink as Link } from './site-link';
 import BaselineDiagnostic from './baseline-diagnostic';
 import { type BaselineAttempt } from '@/lib/baseline';
 import { InstallButton } from './pwa-provider';
-import { progressRequest } from '@/lib/auth-client';
+import { getProgressAccount } from '@/lib/auth-client';
 import { signInHref } from '@/lib/hosting';
 import {
   BookOpen,
@@ -67,9 +67,18 @@ export default function LandingGateway() {
         window.clearTimeout(timer);
       };
     }
-    void progressRequest()
-      .then((response) => {
-        if (active && response.ok) setEntered(true);
+    if (new URLSearchParams(window.location.search).has('practice')) {
+      const timer = window.setTimeout(() => {
+        if (active) setEntryIntent('guest');
+      }, 0);
+      return () => {
+        active = false;
+        window.clearTimeout(timer);
+      };
+    }
+    void getProgressAccount()
+      .then((accountId) => {
+        if (active && accountId) setEntered(true);
       })
       .catch(() => undefined);
     return () => {
@@ -159,7 +168,7 @@ export default function LandingGateway() {
               <Check /> No account needed for the baseline
             </span>
             <span>
-              <Check /> Guest work merges when you later sign in
+              <Check /> Guest progress stays on this device
             </span>
           </div>
         </div>
@@ -172,7 +181,11 @@ export default function LandingGateway() {
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
-        <Link href="/practice" className="landing-path-link">
+        <Link
+          href="/practice"
+          className="landing-path-link"
+          aria-label="Open practice hub"
+        >
           <article>
             <BookOpen />
             <span>
@@ -181,13 +194,18 @@ export default function LandingGateway() {
             </span>
           </article>
         </Link>
-        <Link href="/ops" className="landing-path-link">
+        <Link
+          href="/ops"
+          className="landing-path-link"
+          aria-label="Train mental operations"
+        >
           <article>
             <Target />
             <span>
               <b>Train operations</b>
               <small>
-                Addition, subtraction, multiplication, and division without paper.
+                Addition, subtraction, multiplication, and division without
+                paper.
               </small>
             </span>
           </article>
@@ -216,7 +234,8 @@ export default function LandingGateway() {
           <Link href="/contact">Contact</Link>
         </nav>
         <span>
-          Guest mode is device-local · signed-in mode syncs learning progress
+          Guest mode is device-local · cloud sync depends on account
+          availability
         </span>
         <small>
           For adults aged 18+. By continuing, you agree to the Terms and Privacy

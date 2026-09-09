@@ -1,72 +1,43 @@
-# PacePrep V1 + installable web app — validation
+# PacePrep hardening validation — 9 September 2026
 
-## What this iteration covers
+This record covers the source changes based on `8fa2bd9`, including checkpoint `cdbcfbe` and the subsequent persistence and learning review. These changes have not been deployed to production.
 
-- Live 12-fact / 60-second homepage baseline, without an account gate.
-- Explicit 18+ agreement before saving or syncing; unsaved diagnostic answers remain in memory.
-- Exact BigInt-based fraction/decimal equivalence and decimal-slip coaching.
-- Baseline import with de-duplication; comparisons use matching facts in the same answer mode.
-- Strong green/amber answer feedback, reduced-motion support, and expandable results analysis.
-- Correct elapsed-time sprint rates, deadline enforcement, double-submit protection, and auto-next cleanup.
-- Targeted weak-topic routing, consistent category mastery denominators, and focus-trapped settings.
-- Android/iOS web-app manifest/icons/install help, a public offline reconnect screen, and explicit update confirmation.
-- No private API/auth caching. Guest deletion is available; signed-in deletion does not immediately recreate an empty record through autosave.
-- Standard document links for brochure/auth pages, avoiding a reproduced Vinext client-link transition failure.
+## Actual checks
 
-## Automated checks
+| Check | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm exec tsc --noEmit` | Passed |
+| `pnpm lint:all` | Passed |
+| `pnpm test` | 54 passed, 0 failed, 0 skipped |
+| `pnpm build` | Sites/Cloudflare build passed |
+| `pnpm run build:vercel` | Vercel build passed |
+| `node scripts/verify-vercel-output.mjs` | Passed: Node 24, SSR/API routing, correct adapter, 60 public assets |
+| `git diff --check` | Passed |
+| `node --experimental-strip-types tests/browser-smoke.mjs` | Could not start: Playwright package missing |
 
-`pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test` and `pnpm build` pass.
-Nine unit tests cover exact grading, invalid inputs, decimal slips, sprint rates,
-the baseline bank, manifest icons, and service-worker privacy/fallback behavior.
-The browser smoke script covers the new-user journey and 390px mobile layouts.
-It uses isolated test contexts and mocked authentication; it does not test a
-real OAuth account or publish student data.
+Unit and mocked integration tests cover arithmetic correctness across the banks, distinct MCQs, rational-answer edge cases, scheduling, comparisons, bounded-history merging, account switching, guest import, malformed data, cross-origin/body limits, revision races, queue invalidation, reset generations, and Supabase owner-filtered writes. They do not prove live RLS policies are installed.
 
-## Performance measurement — 4 September 2026
+## Browser checks
 
-Lighthouse 13.4.1, mobile simulation, local production Worker build:
+Available browser tools exercised the local application, separately from the standalone script:
 
-| Measure | Result |
-| --- | ---: |
-| Performance | 98/100 |
-| Accessibility | 100/100 |
-| Best practices | 96/100 |
-| SEO | 100/100 |
-| Largest Contentful Paint | 2.1 seconds |
-| Cumulative Layout Shift | 0 |
-| Total Blocking Time | 0 ms |
+- Completed all 12 baseline facts correctly, scored 100%, saved the synthetic baseline, and reloaded without importing it twice.
+- Profile keyboard focus remained in its dialog; answer preference save/reload exercised.
+- Recall category links, keyboard answer, grading, early end, results and expanded analysis worked.
+- Isolated QA tabs received each other's progress. Reset stopped the other tab's active drill, discarded old history, and allowed fresh practice to save.
+- Operations accepted equivalent numeric input, saved early results, returned to category choice, and expired at 60 seconds without answers. Empty results correctly avoid claiming accuracy or pace.
+- At 390px: recall results, hub, operations, pricing, FAQ, privacy, terms, contact, install and sign-in showed no horizontal overflow. Hub links contain no nested buttons. Mobile Skip was visible.
+- Production landing and baseline feedback/expiry were inspected. Production sign-in explicitly reports cloud accounts unavailable.
 
-The best-practices deduction is the expected unauthenticated `401` from the
-private progress endpoint. No missing assets or uncaught application errors
-were present in the validated run. Production CSS fell from approximately
-283 KB to 126 KB uncompressed by excluding unused scaffold utilities; the
-account-entry dialog and trainer are deferred from first load.
+The standalone browser script supports `PACEPREP_PLAYWRIGHT_PATH` for an installed Playwright package, `PACEPREP_TEST_URL` for the test server, and optional `PACEPREP_BROWSER` for Chromium. Its mocked account section is Sites-only and requires `PACEPREP_TEST_SITES_AUTH=1`. The offline check runs only against the production Worker on port 8787. Neither optional section is claimed as passed here.
 
-These are **local lab measurements**, not field Core Web Vitals or a promise
-for low-end phones on Indian mobile networks. TBT is not INP. Run PageSpeed
-Insights/WebPageTest on the final custom domain and collect sufficient real
-interaction data before claiming an INP percentile or production rating.
-An intermediate audit made against a stale local Worker was discarded after
-resource checks revealed missing assets; its score is not reported here.
+## Deployment and release limits
 
-## Honest release boundaries
+Both public Vercel aliases were verified on the existing production deployment. No release, environment, DNS, alias or database change was made. No project environment variables/connected database were shown in the inspected Vercel dashboard. Enable cloud auth only after actual two-account and anonymous RLS checks, auth email/recovery tests and migration verification described in [docs/VERCEL.md](docs/VERCEL.md).
 
-This is not a complete V2/V3 release or a native-store app. Full offline reopening,
-Hindi, Recall Age, DI transfer sets, persistent Velocity 10 commitments, verified
-certificates, and advanced pressure/shortcut analytics are not claimed as shipped.
-The misleading challenge tile now opens a genuine 10-question benchmark.
+Operator/support/grievance details remain missing. This is a strengthened testing preview, not a completed general launch. Existing bounded histories cannot yield exact disjoint-device session counts; merging preserves conservative totals. No source or dependency change is claimed to produce a measured performance gain.
 
-The owned domain, operator/grievance identity, final retention/pricing decisions,
-and evidence/permission for testimonials must be resolved before general launch.
-Public preview publishing requires the owner's confirmation. Moving origins
-after an installation campaign requires reinstalling the web app and planning
-guest-data migration.
+## Historical measurements
 
-## Sharing asset
-
-`public/paceprep-social.png` is the 1200×630 sharing card, generated with the
-built-in image tool and then resized for delivery. Prompt: a premium landscape
-PacePrep card; bold geometric sans; deep navy, off-white, restrained violet and
-amber; sparse mathematical symbols; exact copy “PacePrep”, “Turn calculation
-into instant recall.”, “Fractions · Tables · Squares · Cubes”; no photos,
-statistics, extra claims, or watermark. It is metadata-only, not a first-load image.
+The repository previously recorded a 4 September local Worker Lighthouse run: performance 98, accessibility 100, best practices 96, SEO 100, LCP 2.1s, CLS 0, TBT 0ms. Those measurements were not repeated during this hardening task and must not be treated as current deployment results or field Core Web Vitals. No fresh assistive-technology or real-device audit is claimed.

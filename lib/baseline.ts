@@ -72,7 +72,7 @@ export const BASELINE_FACTS = [
   {
     id: 's31r',
     topic: 'squares',
-    q: '?² = 961',
+    q: '√961 = ?',
     a: '31',
     choices: ['29', '33', '31', '39'],
   },

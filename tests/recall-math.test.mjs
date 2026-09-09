@@ -60,3 +60,13 @@ test('baseline has twelve distinct facts and one correct option each', () => {
       1,
     );
 });
+
+test('comma grouping cannot turn malformed answers into correct numbers', () => {
+  assert.equal(answersMatch('1,2', '12'), false);
+  assert.equal(answersMatch(',12', '12'), false);
+  assert.equal(answersMatch('1,000', '1000'), true);
+  assert.equal(answersMatch('1,00,000', '100000'), true);
+  assert.equal(answersMatch('12,34.5', '1234.5'), false);
+  assert.equal(questionsPerMinute(-1, 1000), 0);
+  assert.equal(questionsPerMinute(1, Infinity), 0);
+});

@@ -13,7 +13,7 @@
     "dev:vercel": "PACEPREP_PLATFORM=vercel NITRO_PRESET=node vinext dev",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "db:generate": "drizzle-kit generate",
-    "lint": "oxlint app db components/ui/button.tsx lib/utils.ts",
+    "lint": "oxlint app db lib server components/ui/button.tsx",
     "lint:all": "oxlint",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "format": "oxfmt"

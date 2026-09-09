@@ -1,41 +1,51 @@
 # PacePrep production hardening
 
-Updated: 2026-09-08. Base: `main` at `8fa2bd9` (fresh clone, no pre-existing local edits).
+Updated: 2026-09-09. Base `8fa2bd9`; checkpoint 1 is `cdbcfbe`. Checkpoint 2 is the commit containing this update on `codex/paceprep-hardening`. Local implementation and final checks are complete; release boundaries remain below. All changes on this branch belong to this task.
 
-## Scope and architecture
+## Architecture and scope
 
-User requests an implemented, independently reviewed production hardening pass, with durable checkpoints. React 19 / Vinext / Vite application, dual Sites Cloudflare D1 and Vercel Nitro/Supabase deployment adapters. Recall UI lives in `app/trainer-client.tsx`; `/ops` was a second practice implementation; `/practice` links both. Guest progress is browser-local JSON; accounts use an identity-scoped browser key plus `/api/progress`. Supabase verifies the bearer token and scopes queries to its user ID; migration enables owner RLS. No AGENTS.md existed.
+React 19 / Vinext / Vite with Vercel Nitro/Supabase and Sites Cloudflare D1 adapters. Recall: `app/trainer-client.tsx`; operations: `app/ops/ops-client.tsx`; hub: `/practice`. Guest JSON is browser-local. Account snapshots use identity-scoped local keys and `/api/progress`. Supabase verifies bearer tokens on the server and passes that token through owner-filtered PostgREST requests and RLS. Preserve both adapters and existing public origins.
 
-## Checkpoints
+## Completed checkpoints
 
-1. **Investigation: substantially complete, production service access limited.** Read core UI, banks, persistence/auth/API, migration, configuration and prior validation docs. Production homepage differs from current main (old copy/testimonials; newer operations links in main). Browser confirmed baseline expiry, correct and incorrect feedback. Guest/account/mobile/full journeys still need verification.
-2. **Learning corrections: implemented and unit-tested.** Extracted `lib/recall-bank.ts` and `lib/learning-progress.ts`; normalized direct facts to `reverse:false`, unique mathematically distinct choices, corrected first review to 1 day and prevented early repeats from advancing tiers. Merge overlap/idempotence and scheduling tests pass; broader concurrency review remains.
-3. **Security/data integrity: partial.** Added API factory with account expectation binding, strict shape checks, bounded streaming body parsing, private/no-store responses; Sites identity lookup implemented. Auth adapters and Supabase errors changed. API boundary tests now pass. Finished account-aware operations persistence and serialized saves. Trainer safe hydration, account lookup failure handling and serialized autosave implemented; guest merge and adversarial review remain.
-4. **Operations UI: implemented; storage API complete.** Explicit choose/running/done states; wall-clock deadline, sync answer lock, effect cleanup, equivalent numeric grading, empty-session results, reliable back/end navigation, labeled delete keypad, visible save errors. Needs browser and regression testing.
-5. **Navigation/accessibility: pending.** `/practice` nests buttons in links and all recall categories lead to home without selecting a category. Ops links do not select family. Fix and verify.
-6. **Build/CI/deployment/review: pending.** Add meaningful regression tests, run checks, add CI, inspect final diff/secrets, update deployment docs. Do not claim ready or deployed.
+- **Checkpoint 1 (`cdbcfbe`)**: extracted recall bank and scheduling/merge modules; fixed empty direct decks and equivalent correct MCQ options; one-day initial review and due-time promotion. Added authenticated account expectations, bounded JSON reads, validation, private/no-store responses, identity-only lookup, and fail-closed hydration. Operations now have explicit states, deadlines, immediate answer locking, numeric-equivalent grading, timer cleanup, correct end/back behavior, and account-scoped ordered persistence.
+- **Checkpoint 2 (verified)**: atomic revision comparisons in D1 and Supabase; stale writes return 412, missing revision 428. Each client owns its revision and serializes transport; fresh reads invalidate older queued saves. Reset tombstones prevent older devices restoring deleted history while allowing new practice. Trainer merges disk snapshots before saving and receives cross-tab updates; a newer reset stops an active recall session. Guest import merges into the first/same account, deduplicates, preserves source on failure, and retains the previous identity claim through sign-out. Added visible retry for cloud failures.
+- **Learning review**: chronological replay of complete histories, conservative merging of compacted aggregates, comparisons of matching facts/modes in distinct sessions, exact terminating percentages, explicitly approximate recurring values, unambiguous square-root prompts, strict comma grouping, and consistent decimal-slip coaching. No fabricated session counts from unfinished session IDs.
+- **Product and maintenance**: semantic hub links preserve selected categories; mobile operations Skip and empty-result copy fixed; profile answer preference exposes selected state; baseline import persists before clearing pending data. Public sync/approximation copy corrected. Child pages no longer inherit a homepage canonical. Removed 58 unused UI scaffold modules and one unused hook; retained button/dialog. Added CI and Vercel output validator; corrected deployment docs. No dependency or security-rule weakening.
 
-## Validation actually run
+## Validation actually performed
 
-- `pnpm install --frozen-lockfile`: PASS (589 dependencies; bundled Node PATH needed).
-- First Vercel build attempt: FAILED because `lib/learning-progress.ts` was not yet written while parallel agent worked. Retry now.
-- `pnpm exec tsc --noEmit`: PASS before latest trainer hydration edits (rerun pending).
-- `pnpm lint`: PASS before latest trainer hydration edits.
-- `pnpm test`: PASS, 30 tests including API adversarial boundary, bank-wide options, scheduler, merge and operations storage.
-- `pnpm run build:vercel`: PASS before latest trainer hydration edits.
-- `pnpm lint:all`: FAILED on pre-existing scaffold-component issues and a few newly introduced errors since fixed; rerun pending.
-- Full browser E2E and final Sites build remain pending.
-- Original validation documents contain historical claims, not evidence for this patch.
+Final source verification on 2026-09-09:
+
+- `pnpm install --frozen-lockfile`: PASS during this task.
+- `pnpm exec tsc --noEmit`: PASS.
+- `pnpm lint:all`: PASS; scoped `pnpm lint` also passed earlier.
+- `pnpm test`: PASS, **54 tests**, zero failures/skips. Includes math bank invariants, scheduler/merge adversarial cases, account migration, request boundaries, stale revisions, queued writes, and mocked Supabase reset/save integration.
+- `pnpm build`: PASS, Sites/Cloudflare artifact produced.
+- `pnpm run build:vercel`: PASS.
+- `node scripts/verify-vercel-output.mjs`: PASS, Node 24, SSR/API routing, Supabase adapter and 60 public assets.
+- `git diff --check`: PASS. Final source diff and accidental-file review performed; no credentials added. This is a targeted review, not a certified secret scan.
+- `node --experimental-strip-types tests/browser-smoke.mjs`: attempted; **BLOCKED before launch: Playwright package is not installed**. Script updated for revision/reset responses; mocked Sites account flow requires `PACEPREP_TEST_SITES_AUTH=1` on a Sites build. Do not claim the standalone script passed or that Vercel mock responses authenticate a Supabase account.
+- Browser automation through available browser tools: full 12-answer baseline scored 100%; local save/reload retained exactly 17 total test attempts before/after reload (12 new plus 5 existing QA attempts), no pending duplicate import. Profile keyboard focus stayed in dialog; preference save/reload exercised. Recall keyboard grading, early results, details disclosure and post-reset practice passed. Two tabs sharing the isolated `grok-test` store received new attempts; resetting one stopped the other's active session and cleared old history. New post-reset answers saved successfully. Operations accepted equivalent numeric input, ended/backed out correctly, and the 60-second empty sprint expired with “No accuracy or pace measured”.
+- Explicit 390px phone emulation: recall results, practice hub, operations sprint/results, pricing, FAQ, privacy, terms, contact, install and sign-in had no horizontal overflow. Hub had zero nested buttons in links. Browser console check during recall/reset showed no application errors.
+- Production browser: landing/baseline correct and incorrect feedback/empty expiry inspected earlier; sign-in inspected again and explicitly reports cloud accounts unavailable. No live user data submitted.
 
 ## External production findings
 
-Authenticated browser can view Mental Math Vercel project; API connector teams are empty. Project ID `prj_g0D0fCT58IQaRG4QKc4E5KIA4ci2`, repo `parrrm/PacePrep` connected. Dashboard production READY deployment `AkE4ix5Lxr2fUag7vXZMYm7Q5NN3` was CLI-created, canonical assigned domain `paceprep.vercel.app`. Requested `paceprep-mental-math.vercel.app` is reachable but not listed on this project's domain page; resolve before deployment/alias changes. No project environment variables configured in dashboard. Node 24.x. Production overrides use Other, `pnpm run build:vercel`, `.vercel/output/static`, frozen install. Last 6h panel showed 44 edge requests, 18 function invocations, 0% error rate. No live Supabase account/database access verified. Legal operator/support details are missing in existing preview copy; don't invent them.
+Authenticated Vercel dashboard inspected on 2026-09-08; connector team listing was empty. Project `mental-math/paceprep`, id `prj_g0D0fCT58IQaRG4QKc4E5KIA4ci2`, connected to `parrrm/PacePrep`. Production deployment `AkE4ix5Lxr2fUag7vXZMYm7Q5NN3` was READY and CLI-created from older source. **Domain question resolved:** both `paceprep.vercel.app` and `paceprep-mental-math.vercel.app` are assigned to that deployment; the latter is under additional Assigned Domains, despite absence from the project Domains list.
 
-## Exact next step
+No project environment variables or connected storage were shown. Node 24.x, Other framework override, `pnpm run build:vercel`, `.vercel/output/static`, frozen installation. A small six-hour dashboard snapshot showed 44 edge requests, 18 function invocations and 0% errors; it is not evidence of account correctness. Main pushes trigger production; other branches create previews. No deployment, alias, dashboard setting or database migration was changed during this task.
 
-First finish trainer hydration/sync verification and guest migration. Then navigation, browser journeys/mobile, builds and independent diff review. Parallel agents were interrupted by account usage limit; their files are partial and are not implicitly reviewed.
+## Genuine remaining boundaries
 
-## Runtime and workspace
+1. Live Supabase project/migration/RLS, two-user and anonymous direct database isolation, email confirmation/recovery and OAuth have not been verified: no suitable service/account access was available. Keep cloud auth disabled until the checklist in `docs/VERCEL.md` passes. Mocks and source review are not live RLS proof.
+2. Real operator, support and grievance details remain unavailable; contact/legal pages explicitly remain preview placeholders. Do not invent these or call this a general production launch.
+3. The standalone browser suite still needs a Playwright-enabled runner. Fresh Lighthouse, field performance and real-device/accessibility assistive-technology testing were not performed; old lab scores are historical only.
+4. Legacy bounded snapshots cannot exactly reconstruct disjoint-device completed-session totals or distinguish all ancient compacted events. Merge deliberately uses conservative counters and avoids duplicate replay. A lossless multi-device event ledger would require a separate data migration, not invented counts.
+5. Source improvements are local until explicitly released. Preserve the current public origin; there is no export/import UI for moving guest storage between origins.
 
-Repo: `work/PacePrep` within `/Users/apple/Documents/Codex/2026-09-08/build-x20`.
-Node: `/Users/apple/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`; prepend its directory to PATH for pnpm. Dev command: `pnpm run dev:vercel --host 127.0.0.1` (retained exec session 41059; check if alive before restarting). Intermediate script `../refactor_ops.py` is outside repo. User deliverables go in parent `outputs/`. Never print env or credential values.
+## Exact next step / runtime
+
+Local hardening is complete on `codex/paceprep-hardening`; see git log for both checkpoint commits. The source/report handoff is in the workspace outputs directory. No remote branch push or production release was performed. On resume, start with an available Playwright runner or the actual Supabase/service launch checks above; do not redo passing audits or assert production was updated. Use the preview/release workflow in `docs/DEPLOY-NOW.md` when a release is requested.
+
+Repository: `/Users/apple/Documents/Codex/2026-09-08/build-x20/work/PacePrep`. Node: `/Users/apple/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`; prepend that directory to PATH for pnpm. Dev server was stopped for final builds; check liveness before starting `pnpm dev:vercel`. Vinext binds localhost/IPv6 in this environment even when passed `--host 127.0.0.1`. Do not build while using dev: both share generated state. Logs/intermediate scripts are outside the repo in parent `work`; deliverables belong in parent `outputs`. Never print secrets. Read this file, AGENTS.md, status and log on resume.

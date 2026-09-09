@@ -15,7 +15,7 @@ export default function SignOutPage() {
         const { error } = await client.auth.signOut({ scope: 'local' });
         if (error) throw error;
       }
-      localStorage.removeItem('paceprep-account');
+      // Retain the previous guest-data claim so another account cannot inherit it.
       sessionStorage.removeItem('paceprep-entered');
       window.location.assign('/');
     } catch {
@@ -28,8 +28,8 @@ export default function SignOutPage() {
       <article>
         <h1>Sign out of this device?</h1>
         <p>
-          Your saved progress stays with your account. Export any unsynced work
-          from Profile before signing out.
+          Your saved progress stays with your account. Check that cloud sync has
+          finished in Profile before signing out.
         </p>
         {error && <p role="alert">{error}</p>}
         <button className="auth-return" disabled={busy} onClick={signOut}>

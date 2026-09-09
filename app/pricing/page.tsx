@@ -15,7 +15,7 @@ export default function PricingPage() {
         <ul>
           <li>All current fact banks and practice modes</li>
           <li>Guest practice stored on one device</li>
-          <li>Signed-in progress sync</li>
+          <li>Progress sync when cloud accounts are available</li>
           <li>Fact-level mastery, reviews, and session comparisons</li>
         </ul>
       </section>
@@ -23,9 +23,8 @@ export default function PricingPage() {
         <h2>Production pricing is not yet set</h2>
         <p>
           We will publish a clear free-versus-paid feature table before any
-          production launch or billing. No current feature should be described
-          as “free forever” until that commitment is approved by the product
-          owner.
+          production launch or billing. The current preview has no payment
+          requirement.
         </p>
       </section>
     </InfoShell>

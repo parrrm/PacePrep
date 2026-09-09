@@ -1,102 +1,118 @@
-# PacePrep: Vercel deployment
+# PacePrep on Vercel
 
-The existing Vinext/React app is retained. `pnpm build` still targets Sites;
-`pnpm build:vercel` uses the documented Nitro Vercel adapter. Sites identity
-headers and D1 are excluded from the Vercel server through a build-time adapter.
+PacePrep uses React/Vinext with two build targets. `pnpm build` retains the existing
+Sites/Cloudflare deployment. `pnpm build:vercel` selects the Nitro Vercel adapter
+and Supabase progress store at build time, excluding the Sites identity headers
+and D1 adapter from the Vercel server.
 
-## Current preview
+## Verified deployment state — 8 September 2026
 
-Deployed at https://paceprep-mental-math.vercel.app (Vercel reports READY).
-Vercel assigned the first deployment to its production target automatically,
-despite the CLI invocation omitting `--prod`. This is still a guest-only product
-preview, not a completed Supabase launch. Use an explicit preview target for
-subsequent validation deployments.
+The authenticated Vercel dashboard was inspected without changing services:
 
-Guest training needs no credentials. Cloud sign-in remains explicitly disabled
-until `NEXT_PUBLIC_CLOUD_AUTH_READY=true`, the database migration is applied,
-and email delivery is verified. Do not present a guest-only preview as a fully
-launched account service. Existing browser progress is origin-specific: the old
-Sites URL cannot silently transfer local browser storage to a new Vercel URL.
-Use the existing progress export/import controls for that transfer.
+| Setting | Observed state |
+| --- | --- |
+| Project | `mental-math/paceprep` |
+| Project ID | `prj_g0D0fCT58IQaRG4QKc4E5KIA4ci2` |
+| Git repository | `parrrm/PacePrep`, connected |
+| Production deployment | `AkE4ix5Lxr2fUag7vXZMYm7Q5NN3`, Ready, created through the CLI |
+| Production URL shown in Domains | `https://paceprep.vercel.app` |
+| Additional assigned production domain | `https://paceprep-mental-math.vercel.app` |
+| Production deployment URL | `https://paceprep-d3xrszjuu-mental-math.vercel.app` |
+| Runtime | Node.js 24.x |
+| Function | `/__server`, Mumbai (`BOM1`), 319 kB, maximum duration 300 seconds |
+| Production build overrides | Other; `pnpm run build:vercel`; `.vercel/output/static`; frozen pnpm install |
+| Project environment variables | None configured |
+| Connected project storage | None shown |
+| Deployment Checks | None configured |
 
-## Deploy
+The team API connector returned no teams, but browser dashboard access worked.
+The overview's six-hour snapshot showed 44 edge requests, 18 function invocations
+and 0% error rate; this small snapshot does not validate authenticated journeys.
+Production build logs show prebuilt `.vercel/output` artifacts uploaded and
+deployment completed on 6 September at 11:38 IST. These seven-second deployment
+logs do not contain the compilation that generated those artifacts. A live
+Supabase database was not independently verified.
 
-```sh
-pnpm install --frozen-lockfile
-pnpm test
-pnpm exec tsc --noEmit
-pnpm build:vercel
-vercel deploy --scope mental-math --yes --no-wait
-vercel inspect <returned-deployment-url> --scope mental-math
-```
+The requested `https://paceprep-mental-math.vercel.app` is assigned to that same
+production deployment. It is shown under the deployment's additional Assigned
+Domains, although the project Domains page lists only `paceprep.vercel.app`.
+Preserve the requested public alias and verify it after release; see
+[DEPLOY-NOW.md](DEPLOY-NOW.md). An origin change must not silently strand guest
+progress. There is no export/import UI today; implement and verify a migration
+path before any deliberate origin change.
 
-Use preview deployments for review. Production deployment is a separate step:
-`vercel deploy --prod --scope mental-math`. No automatic Git deployment is set up
-until the owner connects a GitHub/GitLab/Bitbucket repository.
+The existing preview `99qFT4c1eZYxTn9PjhEruqFWm6Mq` is Ready at
+`https://paceprep-gj94lui4c-mental-math.vercel.app`, from branch
+`phase-1-practice-navigation`, commit
+`7e21f1b7d47eda5aa148a58ef1d3f29e6fd58350`. Its logs also show a prebuilt upload,
+completed on 7 September at 19:23 IST. Neither existing deployment contains the
+current local hardening work until that work is released.
+
+## Build and release contract
+
+The committed `vercel.json` is authoritative for this custom Nitro build. The
+project's UI defaults currently say Vite while the production deployment's
+overrides match the repository. Do not replace these with a static Vite `dist`
+deploy: the output must include both `.vercel/output/static` and the Node server
+function with its catch-all route. `scripts/verify-vercel-output.mjs` checks the
+upload artifact, runtime, SSR/API routing, Supabase adapter and required assets.
+
+Use the pinned pnpm version in `package.json`, a frozen lockfile and Node.js 24,
+matching the production setting. Run all checks in [DEPLOY-NOW.md](DEPLOY-NOW.md).
+The GitHub CI workflow runs type checking, full lint, tests, the Vercel build and
+artifact verification without production credentials. Public auth stays off in
+CI. A passing build does not prove external credentials, RLS or email delivery.
 
 ## Enable Supabase accounts
 
-1. The owner accepts Supabase marketplace terms in Vercel. Provision only the
-   free plan unless a paid plan is separately approved. Region: Mumbai (`bom1`).
-2. Apply `supabase/migrations/202609040001_learner_progress.sql` in Supabase's SQL
-   editor or migration CLI. It enables RLS and restricts records to `auth.uid()`.
-3. Connect the resource to the Vercel project. Set the public URL and publishable
-   key from `.env.example`. The Marketplace's `SUPABASE_ANON_KEY` and
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY` names are also supported. The app does not need
-   a service-role key at runtime.
-4. Configure Supabase Auth's Site URL and exact `/signin` and `/signin?reset=1`
-   redirect URLs for the approved deployment domains. Do not use a wildcard that
-   permits other users' Vercel projects.
-5. Configure a transactional SMTP provider and verify delivery to external email
-   addresses. Supabase's default sender is not a production email service.
-6. Test registration, confirmation, login, reset, logout, guest import, deletion,
-   and two-account isolation. Set `NEXT_PUBLIC_CLOUD_AUTH_READY=true` only after
-   these checks pass, then redeploy (public variables are compiled into assets).
-7. Google sign-in is not enabled by this preview. It requires a separately
-   configured Google OAuth application and provider validation.
+1. The owner provisions/connects the intended Supabase project. The previous
+   provisioning attempt required acceptance of Supabase Marketplace terms at
+   `https://vercel.com/mental-math/~/integrations/accept-terms/supabase?source=cli`.
+   No database was visible in this audit. Check existing resources before creating
+   one; do not create a duplicate or change billing plans as part of validation.
+2. Apply every committed file in `supabase/migrations` in filename order. Never
+   enable accounts against an older schema. The migrations enable owner RLS and
+   database constraints for learner progress.
+3. Configure Production and any approved Preview environment using the variable
+   names in `.env.example`: `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and matching server values
+   `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`. Marketplace `*_SUPABASE_ANON_KEY`
+   names are supported. This application does not need a service-role key.
+4. Set `PACEPREP_SITE_URL` to the chosen HTTPS public origin without a trailing
+   slash. Set Supabase Auth's Site URL to the same origin and allow its exact
+   `/signin` and `/signin?reset=1` redirect URLs. Add exact approved preview URLs
+   only; do not allow a wildcard spanning unrelated Vercel projects.
+5. Configure a transactional SMTP provider and verify confirmation and recovery
+   delivery to external addresses. Confirmation/reset links use PKCE and must be
+   opened in the browser/device that requested them.
+6. With two controlled test accounts, verify registration, confirmation, login,
+   reset, logout, guest import, progress persistence, concurrent updates and data
+   deletion. At the PostgREST/database boundary, verify account A cannot read,
+   insert, update or delete account B's row. Test anonymous access separately.
+   Unit mocks are not evidence that the deployed database's policies are active.
+7. After those checks pass, set `NEXT_PUBLIC_CLOUD_AUTH_READY=true` and redeploy:
+   public variables are compiled into the browser assets. Verify the deployed
+   flow again. Google OAuth remains unavailable until its application/provider is
+   separately configured and validated.
+
+Add the operator's real support/privacy contact before presenting the service as
+a completed account launch. Do not invent contact details.
 
 ## Security boundaries
 
-- API verifies bearer tokens with Supabase Auth; user identity is never accepted
-  from caller-provided account IDs or `oai-authenticated-*` headers on Vercel.
-- The user's token also reaches PostgREST, so RLS provides a second ownership
-  check. API responses are private/no-store. Cross-origin writes are rejected.
-- Service-role keys, database passwords, and local `.env*` files are never
-  shipped to the browser. `.vercelignore` excludes local credentials and output.
-- Keep the existing Sites deployment until the new flow is validated. No learner
-  records are migrated or deleted automatically.
-- The trainer resolves its session before opening an account's local snapshot.
-  Each sync request is tied to that account; switching accounts in another tab
-  reloads the trainer and cannot upload the previous account's history.
-- Confirmation and password-reset links use PKCE and must be opened in the same
-  browser/device that requested them.
-- Add the operator's real support/privacy contact before production launch.
-
-## Resumed migration validation — 4 September 2026
-
-The recovered checkout already contained the Vercel adapter and initial Supabase
-migration but had no deployment, backend resource, or cloud environment values.
-The resumed work fixes account switching, stale-session local history, unfinished
-sign-in lint errors, password-reset fallback, and Marketplace key compatibility.
-The pnpm version is pinned for repeatable builds.
-
-Sixteen unit tests cover arithmetic, PWA privacy, verified Supabase identity,
-local account isolation, and rejection of sync after an account change. Lint and
-TypeScript checks pass. The Nitro Vercel build also passes. Local HTTP checks on
-that built output verified the home, sign-in, sign-out, privacy, manifest, service
-worker, and fifteen referenced assets; unauthenticated/forged identity requests
-return 401 and cross-origin writes/deletes return 403 with no-store responses.
-
-Live Supabase registration, email delivery, password recovery, persistence,
-deletion, and two-account RLS tests remain unverified until provisioning is
-completed. The public cloud-auth switch remains false.
-
-## Current provisioning checkpoint
-
-`vercel integration add supabase --name paceprep-db --plan free --metadata
-region=bom1 --scope mental-math --no-env-pull --format=json` returned
-`integration_terms_acceptance_required`. No Supabase resource was created.
-The owner must accept the terms here:
-https://vercel.com/mental-math/~/integrations/accept-terms/supabase?source=cli
-Then rerun the same provisioning command, apply the migration, and complete the
-activation checks above. Do not use a different paid plan or duplicate project.
+- Vercel verifies bearer tokens with Supabase Auth; identity never comes from a
+  caller's account ID or the Sites `oai-authenticated-*` headers.
+- The same user token reaches PostgREST, so row-level security provides a second
+  ownership check. Progress API responses are private/no-store and cross-origin
+  writes are rejected.
+- Service-role keys, database passwords and local `.env*` files must not reach
+  browser assets or source control. `.vercelignore` excludes local credentials
+  and generated output from source uploads.
+- Client snapshots belong to a specific resolved account. Guest data is imported
+  deliberately; switching accounts must not upload the previous user's history.
+- Preview deployment access and application account authorization are separate.
+  The dashboard showed Vercel Authentication off and protected sourcemaps on.
+  No protection setting was weakened during this audit.
+- Keep the existing Sites deployment and data until any separate migration is
+  explicitly validated. This Vercel hardening does not publish to Sites or copy
+  learner records between backends.

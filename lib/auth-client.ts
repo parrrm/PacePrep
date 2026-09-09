@@ -4,6 +4,7 @@ import {
   assertProgressAccount,
   prepareAccountStorage as prepareStorage,
 } from './account-storage';
+import { createProgressClient } from './progress-client.ts';
 
 let client: Promise<SupabaseClient> | undefined;
 export function getAuthClient() {
@@ -26,10 +27,15 @@ export function getAuthClient() {
 
 export async function getProgressAccount() {
   if (!onVercel) {
-    const response = await fetch('/api/progress?identity=1', { cache: 'no-store' });
+    const response = await fetch('/api/progress?identity=1', {
+      cache: 'no-store',
+    });
     if (response.status === 401) return null;
-    if (!response.ok) throw new Error('Unable to verify the current account. Please reconnect.');
-    const payload = await response.json() as { user?: { userId?: unknown } };
+    if (!response.ok)
+      throw new Error(
+        'Unable to verify the current account. Please reconnect.',
+      );
+    const payload = (await response.json()) as { user?: { userId?: unknown } };
     if (typeof payload.user?.userId !== 'string' || !payload.user.userId)
       throw new Error('Unable to verify the current account.');
     return payload.user.userId;
@@ -44,7 +50,7 @@ export async function getProgressAccount() {
   return session?.user.id ?? null;
 }
 
-export async function progressRequest(
+async function progressRequest(
   init: RequestInit = {},
   expectedAccountId?: string | null,
 ) {
@@ -62,6 +68,10 @@ export async function progressRequest(
     if (session) headers.set('Authorization', `Bearer ${session.access_token}`);
   }
   return fetch('/api/progress', { ...init, headers, cache: 'no-store' });
+}
+
+export function openProgressClient(accountId: string | null) {
+  return createProgressClient(accountId, progressRequest);
 }
 
 export function prepareAccountStorage(userId: string) {
