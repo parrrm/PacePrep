@@ -16,7 +16,9 @@
     "lint": "oxlint app db lib server components/ui/button.tsx",
     "lint:all": "oxlint",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "test:e2e": "playwright test",
+    "test:e2e:sites": "PACEPREP_E2E_PLATFORM=sites playwright test"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -46,6 +48,7 @@
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@openai/sites-vite-plugin": "0.2.0",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

@@ -32,3 +32,40 @@ jobs:
         env:
           NEXT_PUBLIC_CLOUD_AUTH_READY: 'false'
       - run: node scripts/verify-vercel-output.mjs
+
+  browser:
+    name: Browser journeys (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: vercel
+            build: build:vercel
+            suite: test:e2e
+          - platform: sites
+            build: build
+            suite: test:e2e:sites
+    env:
+      NEXT_PUBLIC_CLOUD_AUTH_READY: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm ${{ matrix.build }}
+      - run: pnpm ${{ matrix.suite }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: browser-${{ matrix.platform }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

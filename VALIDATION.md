@@ -1,6 +1,6 @@
 # PacePrep hardening validation — 9 September 2026
 
-This record covers the source changes based on `8fa2bd9`, including checkpoint `cdbcfbe` and the subsequent persistence and learning review. These changes have not been deployed to production.
+This record covers the source changes based on `8fa2bd9`, including checkpoints `cdbcfbe`, `96c9700`, and the browser-runner/profile-placement checkpoint containing this update. These changes have not been deployed to production.
 
 ## Actual checks
 
@@ -14,23 +14,29 @@ This record covers the source changes based on `8fa2bd9`, including checkpoint `
 | `pnpm run build:vercel` | Vercel build passed |
 | `node scripts/verify-vercel-output.mjs` | Passed: Node 24, SSR/API routing, correct adapter, 60 public assets |
 | `git diff --check` | Passed |
-| `node --experimental-strip-types tests/browser-smoke.mjs` | Could not start: Playwright package missing |
+| `pnpm test:e2e` | Vercel production build: 16 passed, 2 Sites-only skips |
+| `pnpm test:e2e:sites` | Sites production Worker: 18 passed, no skips |
 
 Unit and mocked integration tests cover arithmetic correctness across the banks, distinct MCQs, rational-answer edge cases, scheduling, comparisons, bounded-history merging, account switching, guest import, malformed data, cross-origin/body limits, revision races, queue invalidation, reset generations, and Supabase owner-filtered writes. They do not prove live RLS policies are installed.
 
 ## Browser checks
 
-Available browser tools exercised the local application, separately from the standalone script:
+The automated Playwright suite now runs the following on both desktop (1440px) and phone (390px), with isolated browser contexts and owned local production servers:
 
-- Completed all 12 baseline facts correctly, scored 100%, saved the synthetic baseline, and reloaded without importing it twice.
-- Profile keyboard focus remained in its dialog; answer preference save/reload exercised.
-- Recall category links, keyboard answer, grading, early end, results and expanded analysis worked.
-- Isolated QA tabs received each other's progress. Reset stopped the other tab's active drill, discarded old history, and allowed fresh practice to save.
-- Operations accepted equivalent numeric input, saved early results, returned to category choice, and expired at 60 seconds without answers. Empty results correctly avoid claiming accuracy or pace.
-- At 390px: recall results, hub, operations, pricing, FAQ, privacy, terms, contact, install and sign-in showed no horizontal overflow. Hub links contain no nested buttons. Mobile Skip was visible.
-- Production landing and baseline feedback/expiry were inspected. Production sign-in explicitly reports cloud accounts unavailable.
+- All 12 baseline facts, correct score, pre-save non-persistence, consent gate, save and reload without duplicate imports.
+- Profile heading and answer-mode controls stay in the viewport; keyboard focus, preference persistence and Escape dismissal work. This caught and fixed a double-translation/full-height CSS bug that hid settings above the viewport.
+- Semantic hub links, selected table category, incorrect recall feedback, expanded analysis and ended-session timer cleanup.
+- Numeric-equivalent operation answers, duplicate submits in the same event-loop turn, early results and back navigation.
+- Empty 60-second sprint expiry without invented accuracy/pace or completed sessions.
+- Cross-tab progress/reset propagation, interruption of stale recall, and new post-reset saves.
+- Skipped-answer end confirmation and usable viewport controls.
+- Public pages, manifest, service-worker control and actual offline navigation to the public reconnect screen.
+- Actual built API anonymous/cross-origin rejection and private cache headers; forged Sites identity headers rejected on Vercel.
+- Sites-only mocked account deletion/revision and new cloud-save flow. This scenario is skipped on Vercel and is not a live authentication/RLS test.
 
-The standalone browser script supports `PACEPREP_PLAYWRIGHT_PATH` for an installed Playwright package, `PACEPREP_TEST_URL` for the test server, and optional `PACEPREP_BROWSER` for Chromium. Its mocked account section is Sites-only and requires `PACEPREP_TEST_SITES_AUTH=1`. The offline check runs only against the production Worker on port 8787. Neither optional section is claimed as passed here.
+Final results: 16 passed and 2 intentional skips on Vercel (46.9s); all 18 passed on Sites (53.9s). No retries. Initial failures included an unfinished Chromium download, the real profile CSS bug, and a new test helper that initially omitted a third addition operand. Those issues were resolved before the passing full runs. The existing 54 unit/mocked integration tests, TypeScript, lint and both builds were also rerun successfully.
+
+The former `tests/browser-smoke.mjs` was replaced by `tests/e2e/browser.spec.ts`. Setup, managed servers and separate platform report paths are documented in [docs/E2E.md](docs/E2E.md). CI installs Chromium and runs both platforms; the remote workflow has not yet executed. Earlier browser-tool observations of production landing/baseline/disabled sign-in remain historical observations, not validation of a new deployment.
 
 ## Deployment and release limits
 
