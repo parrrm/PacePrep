@@ -1,49 +1,66 @@
 # PacePrep hardening validation — 9 September 2026
 
-This record covers the source changes based on `8fa2bd9`, including checkpoints `cdbcfbe`, `96c9700`, and the browser-runner/profile-placement checkpoint containing this update. These changes have not been deployed to production.
+Source work based on `8fa2bd9`: checkpoints `cdbcfbe`, `96c9700`, `0c15b87` and the database/accessibility checkpoint containing this record. All locally actionable checkpoints are complete. No production release or live database migration was performed.
 
-## Actual checks
+## Final checks actually run
 
 | Check | Result |
 | --- | --- |
 | `pnpm install --frozen-lockfile` | Passed |
 | `pnpm exec tsc --noEmit` | Passed |
 | `pnpm lint:all` | Passed |
-| `pnpm test` | 54 passed, 0 failed, 0 skipped |
-| `pnpm build` | Sites/Cloudflare build passed |
-| `pnpm run build:vercel` | Vercel build passed |
+| `pnpm test` | **63 passed**, zero failures/skips |
+| `pnpm build:vercel` | Passed |
 | `node scripts/verify-vercel-output.mjs` | Passed: Node 24, SSR/API routing, correct adapter, 60 public assets |
-| `git diff --check` | Passed |
-| `pnpm test:e2e` | Vercel production build: 16 passed, 2 Sites-only skips |
-| `pnpm test:e2e:sites` | Sites production Worker: 18 passed, no skips |
+| `pnpm test:e2e` | **22 passed / 2 intentional Sites-only skips**, desktop and phone, 1.0m |
+| `pnpm build` | Sites/Cloudflare build passed |
+| `pnpm test:e2e:sites` | **27 passed / zero skips**, 1.2m |
+| `pnpm audit:performance` | Both Lighthouse mobile simulations completed; results below |
+| `pnpm test:staging` | Correctly refused missing credentials, exit 2; live check not run |
+| Script syntax and `git diff --check` | Passed |
+| GitHub review-branch push dry run | Blocked: no write credentials; no remote branch/CI run created |
 
-Unit and mocked integration tests cover arithmetic correctness across the banks, distinct MCQs, rational-answer edge cases, scheduling, comparisons, bounded-history merging, account switching, guest import, malformed data, cross-origin/body limits, revision races, queue invalidation, reset generations, and Supabase owner-filtered writes. They do not prove live RLS policies are installed.
+Platforms were built and exercised sequentially. Test and audit servers stopped afterwards. Final Sites shutdown removed its temporary D1 database. Full source diff and accidental-file review completed; no credentials were added. This is a targeted review, not a certified secret scan.
 
-## Browser checks
+## Database and boundary evidence
 
-The automated Playwright suite now runs the following on both desktop (1440px) and phone (390px), with isolated browser contexts and owned local production servers:
+The original 54 tests cover math-bank invariants, scheduling and history merges, account switching/import, request validation, bounded bodies, revision races, queued saves and reset generations. New coverage adds:
 
-- All 12 baseline facts, correct score, pre-save non-persistence, consent gate, save and reload without duplicate imports.
-- Profile heading and answer-mode controls stay in the viewport; keyboard focus, preference persistence and Escape dismissal work. This caught and fixed a double-translation/full-height CSS bug that hid settings above the viewport.
-- Semantic hub links, selected table category, incorrect recall feedback, expanded analysis and ended-session timer cleanup.
-- Numeric-equivalent operation answers, duplicate submits in the same event-loop turn, early results and back navigation.
-- Empty 60-second sprint expiry without invented accuracy/pace or completed sessions.
-- Cross-tab progress/reset propagation, interruption of stale recall, and new post-reset saves.
-- Skipped-answer end confirmation and usable viewport controls.
-- Public pages, manifest, service-worker control and actual offline navigation to the public reconnect screen.
-- Actual built API anonymous/cross-origin rejection and private cache headers; forged Sites identity headers rejected on Vercel.
-- Sites-only mocked account deletion/revision and new cloud-save flow. This scenario is skipped on Vercel and is not a live authentication/RLS test.
+- Three built-Worker D1 scenarios: concurrent insert/update winners, owner isolation, hostile identity text passed as a SQL parameter, rejected payload preservation, monotonic reset tombstones, stale-save rejection and fresh saves. Fixtures use synthetic dispatcher headers only on an owned local Worker; external Sites dispatcher authentication remains outside this evidence.
+- Six PostgreSQL tests execute every committed migration in PGlite. Only the Auth schema/session bridge is simulated. Real PostgreSQL grants, policies, object/size constraints, owner deletion and Auth-user cascade are exercised. Each subtest rolls back its transaction.
+- Three staging-harness guard tests: no network without explicit staging confirmation; no mutation when either account already has progress; cleanup of an accidentally accepted cross-owner fixture under simulated broken RLS. These guards are not live service verification.
 
-Final results: 16 passed and 2 intentional skips on Vercel (46.9s); all 18 passed on Sites (53.9s). No retries. Initial failures included an unfinished Chromium download, the real profile CSS bug, and a new test helper that initially omitted a third addition operand. Those issues were resolved before the passing full runs. The existing 54 unit/mocked integration tests, TypeScript, lint and both builds were also rerun successfully.
+The SQL tests reproduced excess authenticated TRUNCATE permission with older default grants. `202609090001_limit_progress_privileges.sql` revokes inherited table powers before granting only SELECT/INSERT/UPDATE/DELETE. The initial test failed; it passes with the new migration. Apply both migrations to staging before enabling cloud accounts. The migration was not applied remotely.
 
-The former `tests/browser-smoke.mjs` was replaced by `tests/e2e/browser.spec.ts`. Setup, managed servers and separate platform report paths are documented in [docs/E2E.md](docs/E2E.md). CI installs Chromium and runs both platforms; the remote workflow has not yet executed. Earlier browser-tool observations of production landing/baseline/disabled sign-in remain historical observations, not validation of a new deployment.
+## Browser and accessibility evidence
 
-## Deployment and release limits
+Both viewport projects retain baseline scoring/consent/save/reload, profile viewport/focus/preferences, selected-category navigation, incorrect-answer feedback, result analysis, operation equivalence and duplicate submission, sprint expiry, cross-tab reset/new saves, end confirmation, public pages, manifest and actual service-worker offline fallback. Built API anonymous/cross-origin rejection and Vercel forged-header rejection pass. Sites also runs its mocked cloud reset/save journey.
 
-Both public Vercel aliases were verified on the existing production deployment. No release, environment, DNS, alias or database change was made. No project environment variables/connected database were shown in the inspected Vercel dashboard. Enable cloud auth only after actual two-account and anonymous RLS checks, auth email/recovery tests and migration verification described in [docs/VERCEL.md](docs/VERCEL.md).
+Pinned axe scans cover ten public routes, settings, recall input/feedback/results and operations on desktop and phone. WCAG A/AA checks include visible-label matching. Findings fixed during the final audit:
 
-Operator/support/grievance details remain missing. This is a strengthened testing preview, not a completed general launch. Existing bounded histories cannot yield exact disjoint-device session counts; merging preserves conservative totals. No source or dependency change is claimed to produce a measured performance gain.
+- Numeric/fraction text used labels on generic spans that assistive technology could ignore. Accessible text now accompanies the visual rendering.
+- Landing, hub and operation category labels omitted or differed from visible text. Controls now derive names from their content.
+- An enabled baseline button briefly retained disabled opacity because of `transition-all`. Explicit transition properties remove the contrast failure when enabling controls.
 
-## Historical measurements
+The full final suites pass with no retries or disabled accessibility rules. These scans do not replace real assistive-technology testing. Earlier profile placement and learning/persistence fixes remain documented in `TASK_PROGRESS.md`.
 
-The repository previously recorded a 4 September local Worker Lighthouse run: performance 98, accessibility 100, best practices 96, SEO 100, LCP 2.1s, CLS 0, TBT 0ms. Those measurements were not repeated during this hardening task and must not be treated as current deployment results or field Core Web Vitals. No fresh assistive-technology or real-device audit is claimed.
+## Fresh local performance measurements
+
+Lighthouse **13.4.1**, mobile simulated throttling, Playwright Chromium, local Vercel production preview, 9 September 2026 at 10:55 UTC:
+
+| Route | Performance | Accessibility | Best practices | SEO | LCP | CLS | TBT |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `/` | 75 | 100 | 100 | 100 | 4.83s | 0.000075 | 11.5ms |
+| `/practice` | 77 | 100 | 100 | 100 | 4.67s | 0 | 11.5ms |
+
+Reports contain no run warnings. The local preview does not apply production CDN compression/cache headers. The generated Vercel configuration already sets immutable caching for hashed assets. Reports identify CSS/JS transfer cost, but these results do not establish deployed performance, field Core Web Vitals or a measured speed improvement. `pnpm audit:performance` writes HTML/JSON under ignored `outputs/lighthouse/`.
+
+Historical 4 September Worker scores of 98/100/96/100 used a different build/runtime. They are not a valid before/after comparison with these measurements.
+
+## Remaining external gates and exact next action
+
+`git push --dry-run` failed because GitHub write credentials are unavailable. Configure GitHub authentication, push `codex/paceprep-hardening`, then inspect the validation job and both browser jobs for that commit. CI now runs on review-branch pushes as well as main/PRs. No remote execution is claimed.
+
+Then access the intended staging Supabase project, apply both migrations, run `pnpm test:staging` with two empty disposable accounts and the secure test-only variables in [docs/VERCEL.md](docs/VERCEL.md), and verify confirmation/recovery/OAuth plus deployed application behavior. Keep cloud auth disabled until those checks pass. Operator/support/grievance details, deployed/field performance and real-device/assistive-technology verification remain unavailable.
+
+Both production aliases remain unchanged. No guest-origin migration is attempted. Bounded legacy histories still cannot reconstruct exact disjoint-device session totals; conservative merging is deliberate. These limits must remain explicit before a general launch.

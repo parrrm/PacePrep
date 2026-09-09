@@ -168,8 +168,13 @@ function FractionValue({ value }: { value: string }) {
   const match = value.match(/^(-?\d+\s+)?(\d+)\/(\d+)$/);
   if (!match) return <>{value}</>;
   return (
-    <span className="fraction-value" aria-label={value}>
-      {match[1] && <span className="fraction-whole">{match[1].trim()}</span>}
+    <span className="fraction-value">
+      <span className="sr-only">{value}</span>
+      {match[1] && (
+        <span className="fraction-whole" aria-hidden="true">
+          {match[1].trim()}
+        </span>
+      )}
       <span className="fraction-stack" aria-hidden="true">
         <span>{match[2]}</span>
         <span>{match[3]}</span>
@@ -1331,10 +1336,8 @@ function Header({
         <Button variant="outline" className="nav-mixed" onClick={onMixed}>
           <Play fill="currentColor" /> Mixed practice
         </Button>
-        <div
-          className="nav-xp"
-          aria-label={`Level ${Math.floor(attempts / 50) + 1}, ${attempts % 50} of 50 XP`}
-        >
+        <div className="nav-xp">
+          <span className="sr-only">{attempts % 50} of 50 XP</span>
           <span>
             <b>LVL {Math.floor(attempts / 50) + 1}</b>
             <small>{Math.floor(attempts / 10)} focus tokens</small>
@@ -2157,7 +2160,8 @@ function AnimatedCount({ value }: { value: number }) {
     return () => cancelAnimationFrame(frame);
   }, [value]);
   return (
-    <span aria-label={String(value)}>
+    <span>
+      <span className="sr-only">{value}</span>
       <span aria-hidden="true">{display}</span>
     </span>
   );
@@ -2306,7 +2310,7 @@ function Practice({
                 Check answer
               </Button>
               {fact.a.includes('/') && (
-                <div className="fraction-keypad" aria-label="Fraction keypad">
+                <div className="fraction-keypad">
                   {[
                     '1',
                     '2',

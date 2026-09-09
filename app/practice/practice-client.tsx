@@ -83,7 +83,6 @@ export default function PracticeHubPage() {
                 key={item.title}
                 href={item.href}
                 className="practice-category-link"
-                aria-label={item.title}
               >
                 <header>
                   <i className={item.color}>
@@ -126,7 +125,6 @@ export default function PracticeHubPage() {
                   key={key}
                   href={`/ops?family=${key}`}
                   className="practice-category-link"
-                  aria-label={meta.title + ' mental operations'}
                 >
                   <header>
                     <i className={meta.color}>

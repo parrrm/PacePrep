@@ -123,7 +123,7 @@ test('hub category, incorrect answer and ended-session timer stay consistent', a
   await page.goto('/practice');
   await expect(page.locator('a button')).toHaveCount(0);
   await noOverflow(page);
-  await page.getByRole('link', { name: 'Tables', exact: true }).click();
+  await page.getByRole('link', { name: /^Tables / }).click();
   await page.getByRole('checkbox').check();
   await page
     .getByRole('button', { name: 'Continue as guest', exact: true })

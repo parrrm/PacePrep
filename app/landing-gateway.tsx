@@ -107,7 +107,7 @@ export default function LandingGateway() {
     <main className="landing-shell">
       <div className="math-atmosphere" aria-hidden="true" />
       <header className="landing-nav">
-        <span className="brand" aria-label="PacePrep home">
+        <span className="brand">
           <b>
             <Zap size={16} />
           </b>
@@ -181,11 +181,7 @@ export default function LandingGateway() {
       </section>
 
       <section className="landing-paths" aria-label="Training paths">
-        <Link
-          href="/practice"
-          className="landing-path-link"
-          aria-label="Open practice hub"
-        >
+        <Link href="/practice" className="landing-path-link">
           <article>
             <BookOpen />
             <span>
@@ -194,11 +190,7 @@ export default function LandingGateway() {
             </span>
           </article>
         </Link>
-        <Link
-          href="/ops"
-          className="landing-path-link"
-          aria-label="Train mental operations"
-        >
+        <Link href="/ops" className="landing-path-link">
           <article>
             <Target />
             <span>

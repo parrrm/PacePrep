@@ -98,6 +98,33 @@ CI. A passing build does not prove external credentials, RLS or email delivery.
 Add the operator's real support/privacy contact before presenting the service as
 a completed account launch. Do not invent contact details.
 
+### Repeatable staging isolation check
+
+Apply both migrations, including `202609090001_limit_progress_privileges.sql`.
+It removes older inherited table grants before restoring row operations; RLS
+does not govern TRUNCATE. Local PostgreSQL coverage runs in `pnpm test`, but
+deployment state still requires staging verification.
+
+Use two disposable, confirmed staging accounts with no learner progress and no
+concurrent application sessions. Set these variables through your secure local
+environment (never commit them or paste tokens into a command log):
+
+- `PACEPREP_RLS_TEST_URL`: the staging Supabase project origin.
+- `PACEPREP_RLS_TEST_PUBLIC_KEY`: its publishable/anon key, never a service key.
+- `PACEPREP_RLS_TEST_TOKEN_A` and `PACEPREP_RLS_TEST_TOKEN_B`: current access tokens
+  for the two different controlled accounts.
+- `PACEPREP_RLS_TEST_STAGING=1`: confirms these are disposable staging accounts.
+
+Run `pnpm test:staging`. The script verifies both identities, refuses existing
+progress, checks own CRUD, cross-owner/anonymous denial and JSON constraints
+directly through PostgREST, and deletes only fixtures bearing its run timestamp.
+It does not configure services or apply migrations. If cleanup cannot be
+confirmed, it fails and asks for inspection of the disposable accounts. Missing
+configuration exits 2 before any request. Provider responses, account identifiers
+and credentials are not printed. A passing run still does not verify email
+delivery, PKCE recovery, OAuth, the deployed app's environment or table-level
+privileges outside PostgREST; complete the checks above before enabling accounts.
+
 ## Security boundaries
 
 - Vercel verifies bearer tokens with Supabase Auth; identity never comes from a

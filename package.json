@@ -17,6 +17,8 @@
     "lint:all": "oxlint",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "format": "oxfmt",
+    "audit:performance": "node scripts/audit-performance.mjs",
+    "test:staging": "node scripts/verify-supabase-staging.mjs",
     "test:e2e": "playwright test",
     "test:e2e:sites": "PACEPREP_E2E_PLATFORM=sites playwright test"
   },
@@ -45,8 +47,10 @@
     "vinext": "1.0.0-beta.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
+    "@electric-sql/pglite": "0.5.8",
     "@openai/sites-vite-plugin": "0.2.0",
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.1",
@@ -56,6 +60,7 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
+    "lighthouse": "13.4.1",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",

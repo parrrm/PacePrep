@@ -333,11 +333,7 @@ export default function OpsPage() {
               const meta = OPERATION_FAMILIES[key];
               const Icon = ICONS[key];
               return (
-                <button
-                  key={key}
-                  onClick={() => setFamily(key)}
-                  aria-label={meta.title}
-                >
+                <button key={key} onClick={() => setFamily(key)}>
                   <header>
                     <i className={meta.color}>
                       <Icon />
@@ -486,7 +482,7 @@ export default function OpsPage() {
             <Button type="submit" disabled={!!result || !answer.trim()}>
               Check answer
             </Button>
-            <div className="fraction-keypad" aria-label="Number keypad">
+            <div className="fraction-keypad">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((key) => (
                 <button
                   type="button"

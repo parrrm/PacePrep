@@ -30,22 +30,29 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
+    {
+      name: 'desktop',
+      testIgnore: '**/d1.spec.ts',
+      use: { viewport: { width: 1440, height: 1000 } },
+    },
     {
       name: 'phone',
+      testIgnore: '**/d1.spec.ts',
       use: {
         viewport: { width: 390, height: 844 },
         isMobile: true,
         hasTouch: true,
       },
     },
+    ...(sites ? [{ name: 'database', testMatch: '**/d1.spec.ts' }] : []),
   ],
   webServer: {
     command: sites
-      ? 'pnpm exec wrangler dev --config dist/server/wrangler.json --port 8787 --ip localhost --local'
+      ? 'node scripts/e2e-sites-server.mjs'
       : 'PACEPREP_PLATFORM=vercel NITRO_PRESET=vercel pnpm exec vite preview --host localhost --port 4173 --strictPort',
     url: baseURL,
     reuseExistingServer: false,
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     timeout: 60_000,
     env: {
       NEXT_PUBLIC_CLOUD_AUTH_READY: 'false',
