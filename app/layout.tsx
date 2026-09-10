@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import './mobile-launch.css';
 import './practice-family.css';
+import './training-workspace.css';
 import { PwaProvider } from './pwa-provider';
 
 const origin =

@@ -11,6 +11,7 @@ export type OperationProgress = {
   record(item: ProgressAttempt): void;
   complete(): void;
   flush(): Promise<void>;
+  snapshot(): SavedProgress;
 };
 
 /** A session stays bound to the identity it opened with, even after sign-out. */
@@ -38,6 +39,7 @@ export function createOperationProgress(
   read();
   return {
     accountId,
+    snapshot: read,
     record(item) {
       const snapshot = read();
       write({

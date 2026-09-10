@@ -1,5 +1,3 @@
-'use client';
-
 import {
   BookOpen,
   Brain,
@@ -19,6 +17,7 @@ import {
   type OperationFamilyId,
 } from '@/lib/practice-families';
 import { operationsByTopic } from '@/lib/mental-ops';
+import { WorkspaceHeader } from '../workspace-header';
 
 const RECALL = [
   {
@@ -60,116 +59,135 @@ const ICONS = {
 
 export default function PracticeHubPage() {
   return (
-    <main className="page practice-hub practice-hub-v4">
-      <div className="masteryTitle">
-        <span>
-          <small>{PRACTICE_HUB_COPY.eyebrow}</small>
-          <h1>{PRACTICE_HUB_COPY.title}</h1>
-          <p>{PRACTICE_HUB_COPY.intro}</p>
-        </span>
-      </div>
-
-      <section className="practice-family" aria-labelledby="recall-facts-title">
-        <header>
-          <small>{PRACTICE_HUB_COPY.recallEyebrow}</small>
-          <h2 id="recall-facts-title">{PRACTICE_HUB_COPY.recallTitle}</h2>
-          <p>{PRACTICE_HUB_COPY.recallIntro}</p>
-        </header>
-        <section className="domain-grid" aria-label="Recall fact categories">
-          {RECALL.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.title}
-                href={item.href}
-                className="practice-category-link"
-              >
-                <header>
-                  <i className={item.color}>
-                    <Icon />
-                  </i>
-                </header>
-                <span>
-                  <b>{item.title}</b>
-                  <small>{item.copy}</small>
-                </span>
-                <footer>
-                  <span>
-                    <small>TRAINER</small>
-                    <strong>Open</strong>
-                  </span>
-                  <ChevronRight />
-                </footer>
-              </Link>
-            );
-          })}
+    <>
+      <WorkspaceHeader active="practice" />
+      <main className="page practice-hub practice-hub-v4 workspace-practice">
+        <div className="masteryTitle">
+          <span>
+            <small>THE PRACTICE STUDIO</small>
+            <h1>What will you make easier today?</h1>
+            <p>{PRACTICE_HUB_COPY.intro}</p>
+          </span>
+        </div>
+        <section className="practice-quickstart" aria-label="Quick start">
+          <div>
+            <span className="session-badge">10 questions · Your pace</span>
+            <h2>A short set, chosen for you.</h2>
+            <p>
+              Mix recall topics or choose a skill below. Every untimed set gives
+              you time to understand your answer.
+            </p>
+          </div>
+          <Link href="/?practice=all" className="workspace-action">
+            Open mixed practice <ChevronRight size={18} />
+          </Link>
         </section>
-      </section>
 
-      <section className="practice-family" aria-labelledby="mental-ops-title">
-        <header>
-          <small>{PRACTICE_HUB_COPY.opsEyebrow}</small>
-          <h2 id="mental-ops-title">{PRACTICE_HUB_COPY.opsTitle}</h2>
-          <p>{PRACTICE_HUB_COPY.opsIntro}</p>
-        </header>
         <section
-          className="domain-grid"
-          aria-label="Mental operation categories"
+          className="practice-family"
+          aria-labelledby="recall-facts-title"
         >
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
-            (key) => {
-              const meta = OPERATION_FAMILIES[key];
-              const Icon = ICONS[key];
+          <header>
+            <small>{PRACTICE_HUB_COPY.recallEyebrow}</small>
+            <h2 id="recall-facts-title">{PRACTICE_HUB_COPY.recallTitle}</h2>
+            <p>{PRACTICE_HUB_COPY.recallIntro}</p>
+          </header>
+          <section className="domain-grid" aria-label="Recall fact categories">
+            {RECALL.map((item) => {
+              const Icon = item.icon;
               return (
                 <Link
-                  key={key}
-                  href={`/ops?family=${key}`}
+                  key={item.title}
+                  href={item.href}
                   className="practice-category-link"
                 >
                   <header>
-                    <i className={meta.color}>
+                    <i className={item.color}>
                       <Icon />
                     </i>
-                    <em>OPEN</em>
                   </header>
                   <span>
-                    <b>{meta.title}</b>
-                    <small>{meta.copy}</small>
+                    <b>{item.title}</b>
+                    <small>{item.copy}</small>
                   </span>
                   <footer>
                     <span>
-                      <small>BANK</small>
-                      <strong>{operationsByTopic(key).length} facts</strong>
+                      <small>TRAINER</small>
+                      <strong>Open</strong>
                     </span>
                     <ChevronRight />
                   </footer>
                 </Link>
               );
-            },
-          )}
+            })}
+          </section>
         </section>
-      </section>
 
-      <section className="mixed-review-row">
-        <span>
-          <i>
-            <Target />
-          </i>
+        <section className="practice-family" aria-labelledby="mental-ops-title">
+          <header>
+            <small>{PRACTICE_HUB_COPY.opsEyebrow}</small>
+            <h2 id="mental-ops-title">{PRACTICE_HUB_COPY.opsTitle}</h2>
+            <p>{PRACTICE_HUB_COPY.opsIntro}</p>
+          </header>
+          <section
+            className="domain-grid"
+            aria-label="Mental operation categories"
+          >
+            {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+              (key) => {
+                const meta = OPERATION_FAMILIES[key];
+                const Icon = ICONS[key];
+                return (
+                  <Link
+                    key={key}
+                    href={`/ops?family=${key}`}
+                    className="practice-category-link"
+                  >
+                    <header>
+                      <i className={meta.color}>
+                        <Icon />
+                      </i>
+                      <em>OPEN</em>
+                    </header>
+                    <span>
+                      <b>{meta.title}</b>
+                      <small>{meta.copy}</small>
+                    </span>
+                    <footer>
+                      <span>
+                        <small>BANK</small>
+                        <strong>{operationsByTopic(key).length} facts</strong>
+                      </span>
+                      <ChevronRight />
+                    </footer>
+                  </Link>
+                );
+              },
+            )}
+          </section>
+        </section>
+
+        <section className="mixed-review-row">
           <span>
-            <small>{PRACTICE_HUB_COPY.mixedEyebrow}</small>
-            <h2>{PRACTICE_HUB_COPY.mixedTitle}</h2>
-            <p>{PRACTICE_HUB_COPY.mixedIntro}</p>
+            <i>
+              <Target />
+            </i>
+            <span>
+              <small>{PRACTICE_HUB_COPY.mixedEyebrow}</small>
+              <h2>{PRACTICE_HUB_COPY.mixedTitle}</h2>
+              <p>{PRACTICE_HUB_COPY.mixedIntro}</p>
+            </span>
           </span>
-        </span>
-        <div>
-          <Link href="/?practice=all">Open recall trainer</Link>
-          <Link href="/ops">Open operations</Link>
-        </div>
-      </section>
+          <div>
+            <Link href="/?practice=all">Open recall trainer</Link>
+            <Link href="/ops">Open operations</Link>
+          </div>
+        </section>
 
-      <p>
-        <Link href="/">Back to PacePrep home</Link>
-      </p>
-    </main>
+        <p>
+          <Link href="/">Back to PacePrep home</Link>
+        </p>
+      </main>
+    </>
   );
 }

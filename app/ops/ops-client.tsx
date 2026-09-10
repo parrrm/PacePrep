@@ -30,6 +30,8 @@ import {
 } from '@/lib/ops-progress';
 
 import { answersMatch } from '@/lib/recall-math';
+import { adaptiveDeck } from '@/lib/practice-engine';
+import { WorkspaceHeader } from '../workspace-header';
 
 type Try = {
   id: string;
@@ -41,15 +43,6 @@ type Try = {
   ms: number;
   strategy: string;
 };
-
-function shuffle<T>(items: T[]) {
-  const result = [...items];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
 
 const ICONS = {
   addition: Plus,
@@ -147,27 +140,50 @@ export default function OpsPage() {
   }, [stage, sprint, finish]);
 
   useEffect(() => {
-    if (stage === 'running' && !result) field.current?.focus();
+    if (
+      stage === 'running' &&
+      !result &&
+      window.matchMedia('(pointer: fine)').matches
+    )
+      field.current?.focus();
   }, [stage, index, result]);
 
   const fact = deck[index];
 
-  function begin(next: OperationFamilyId, mode: 'ten' | 'sprint') {
+  function begin(next: OperationFamilyId, mode: 'ten' | 'sprint' | 'retry') {
     if (!progress.current) return;
     try {
       sessionStorage.setItem('paceprep-entered', '1');
     } catch {
       /* Practice can continue with its loaded storage. */
     }
-    const pool = shuffle(operationsByTopic(next));
+    const retryIds = new Set(
+      log.filter((item) => !item.correct).map((item) => item.id),
+    );
+    let pool: OpFact[];
+    try {
+      pool = adaptiveDeck(
+        operationsByTopic(next).filter(
+          (item) => mode !== 'retry' || retryIds.has(item.id),
+        ),
+        progress.current.snapshot().stats ?? {},
+      );
+    } catch {
+      setSaveError(
+        'Your progress could not be read. Reload before starting another session.',
+      );
+      return;
+    }
+    if (!pool.length) return;
     sessionId.current = `ops-${crypto.randomUUID()}`;
     counted.current = false;
     locked.current = false;
     attemptCount.current = 0;
     setFamily(next);
     setSprint(mode === 'sprint');
-    setLimit(mode === 'sprint' ? 0 : 10);
-    setDeck(mode === 'sprint' ? pool : pool.slice(0, 10));
+    const size = mode === 'retry' ? pool.length : Math.min(10, pool.length);
+    setLimit(mode === 'sprint' ? 0 : size);
+    setDeck(mode === 'sprint' ? pool : pool.slice(0, size));
     setIndex(0);
     setAnswer('');
     setResult(null);
@@ -261,163 +277,185 @@ export default function OpsPage() {
 
   if (stage === 'done') {
     return (
-      <main className="page practice-hub">
-        <div className="masteryTitle">
-          <span>
-            <small>MENTAL OPERATIONS</small>
-            <h1>Session review</h1>
-            <p>
-              {scored.length} answered ·{' '}
-              {scored.length
-                ? `${accuracy}% accuracy · ${average.toFixed(1)}s average`
-                : 'No accuracy or pace measured'}
-            </p>
-          </span>
-        </div>
-        {status}
-        <section className="panel operation-empty">
-          <b>Keep the facts that slowed you down.</b>
-          <p>Accuracy before speed. Replay the weak items without paper.</p>
-          {weak.length ? (
-            <ul>
-              {weak.map((item) => (
-                <li key={item.id}>
-                  {item.q} {item.a} — {item.strategy}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>
-              {log.length
-                ? 'No misses. Move to another operation or a mixed recall set.'
-                : 'No answers recorded. Try an untimed drill to get started.'}
-            </p>
-          )}
-          <div>
-            <Button onClick={() => family && begin(family, 'ten')}>
-              Drill again
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFamily(null);
-                setStage('choose');
-              }}
-            >
-              Back to operations
-            </Button>
-            <Link href="/">Home</Link>
+      <>
+        <WorkspaceHeader active="operations" />
+        <main className="page practice-hub workspace-practice">
+          <div className="masteryTitle">
+            <span>
+              <small>MENTAL OPERATIONS</small>
+              <h1>Session review</h1>
+              <p>
+                {scored.length} answered ·{' '}
+                {scored.length
+                  ? `${accuracy}% accuracy · ${average.toFixed(1)}s average`
+                  : 'No accuracy or pace measured'}
+              </p>
+            </span>
           </div>
-        </section>
-      </main>
+          {status}
+          <section className="panel operation-empty">
+            <h2>
+              {weak.length
+                ? 'Turn the misses into recall.'
+                : 'A useful step forward.'}
+            </h2>
+            <p>
+              {weak.length
+                ? 'Read the strategy, then try just these questions again at your own pace.'
+                : 'A later review checks what sticks. Move on when you feel ready.'}
+            </p>
+            {weak.length ? (
+              <ul>
+                {weak.map((item) => (
+                  <li key={item.id}>
+                    {item.q} {item.a} — {item.strategy}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>
+                {log.length
+                  ? 'No misses. Move to another operation or a mixed recall set.'
+                  : 'No answers recorded. Try an untimed drill to get started.'}
+              </p>
+            )}
+            <div>
+              {!!weak.length && (
+                <Button onClick={() => family && begin(family, 'retry')}>
+                  Retry missed questions
+                </Button>
+              )}
+              <Button onClick={() => family && begin(family, 'ten')}>
+                Drill again
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFamily(null);
+                  setStage('choose');
+                }}
+              >
+                Back to operations
+              </Button>
+              <Link href="/">Home</Link>
+            </div>
+          </section>
+        </main>
+      </>
     );
   }
 
   if (!family) {
     return (
-      <main className="page practice-hub practice-hub-v4">
-        <div className="masteryTitle">
-          <span>
-            <small>{PRACTICE_HUB_COPY.opsEyebrow}</small>
-            <h1>{PRACTICE_HUB_COPY.opsTitle}</h1>
-            <p>{PRACTICE_HUB_COPY.opsIntro}</p>
-          </span>
-        </div>
-        {status}
-        <section
-          className="domain-grid"
-          aria-label="Mental operation categories"
-        >
-          {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
-            (key) => {
-              const meta = OPERATION_FAMILIES[key];
-              const Icon = ICONS[key];
-              return (
-                <button key={key} onClick={() => setFamily(key)}>
-                  <header>
-                    <i className={meta.color}>
-                      <Icon />
-                    </i>
-                    <em>OPEN</em>
-                  </header>
-                  <span>
-                    <b>{meta.title}</b>
-                    <small>{meta.copy}</small>
-                  </span>
-                  <footer>
+      <>
+        <WorkspaceHeader active="operations" />
+        <main className="page practice-hub practice-hub-v4 workspace-practice">
+          <div className="masteryTitle">
+            <span>
+              <small>{PRACTICE_HUB_COPY.opsEyebrow}</small>
+              <h1>{PRACTICE_HUB_COPY.opsTitle}</h1>
+              <p>{PRACTICE_HUB_COPY.opsIntro}</p>
+            </span>
+          </div>
+          {status}
+          <section
+            className="domain-grid"
+            aria-label="Mental operation categories"
+          >
+            {(Object.keys(OPERATION_FAMILIES) as OperationFamilyId[]).map(
+              (key) => {
+                const meta = OPERATION_FAMILIES[key];
+                const Icon = ICONS[key];
+                return (
+                  <button key={key} onClick={() => setFamily(key)}>
+                    <header>
+                      <i className={meta.color}>
+                        <Icon />
+                      </i>
+                      <em>OPEN</em>
+                    </header>
                     <span>
-                      <small>BANK</small>
-                      <strong>{operationsByTopic(key).length} facts</strong>
+                      <b>{meta.title}</b>
+                      <small>{meta.copy}</small>
                     </span>
-                    <ChevronRight />
-                  </footer>
-                </button>
-              );
-            },
-          )}
-        </section>
-        <p>
-          <Link href="/">← Back to PacePrep home</Link>
-        </p>
-      </main>
+                    <footer>
+                      <span>
+                        <small>BANK</small>
+                        <strong>{operationsByTopic(key).length} facts</strong>
+                      </span>
+                      <ChevronRight />
+                    </footer>
+                  </button>
+                );
+              },
+            )}
+          </section>
+          <p>
+            <Link href="/">← Back to PacePrep home</Link>
+          </p>
+        </main>
+      </>
     );
   }
 
   const meta = OPERATION_FAMILIES[family];
   if (stage === 'choose') {
     return (
-      <main className="page practice-hub category-page">
-        <nav className="practice-breadcrumb" aria-label="Breadcrumb">
-          <button
-            onClick={() => {
-              setFamily(null);
-              setStage('choose');
-            }}
-          >
-            Operations
-          </button>
-          <ChevronRight />
-          <span aria-current="page">{meta.title}</span>
-        </nav>
-        <div className="masteryTitle">
-          <span>
-            <small>{meta.title.toUpperCase()}</small>
-            <h1>{meta.title} in your head</h1>
-            <p>{meta.copy} Type the answer. No pen, no paper.</p>
-          </span>
-        </div>
-        {status}
-        <section className="category-mode-grid" aria-label="Session formats">
-          <button
-            disabled={loading || !canStart}
-            onClick={() => begin(family, 'ten')}
-          >
-            <i className={meta.color}>
-              <Play />
-            </i>
-            <span>
-              <small>NO PAPER</small>
-              <b>10-question drill</b>
-              <em>Strategy appears after you check the answer.</em>
-            </span>
+      <>
+        <WorkspaceHeader active="operations" />
+        <main className="page practice-hub category-page workspace-practice">
+          <nav className="practice-breadcrumb" aria-label="Breadcrumb">
+            <button
+              onClick={() => {
+                setFamily(null);
+                setStage('choose');
+              }}
+            >
+              Operations
+            </button>
             <ChevronRight />
-          </button>
-          <button
-            disabled={loading || !canStart}
-            onClick={() => begin(family, 'sprint')}
-          >
-            <i className={meta.color}>
-              <Clock3 />
-            </i>
+            <span aria-current="page">{meta.title}</span>
+          </nav>
+          <div className="masteryTitle">
             <span>
-              <small>60 SECONDS</small>
-              <b>Timed sprint</b>
-              <em>Session clock only. Keep the work in your head.</em>
+              <small>{meta.title.toUpperCase()}</small>
+              <h1>{meta.title} in your head</h1>
+              <p>{meta.copy} Type the answer. No pen, no paper.</p>
             </span>
-            <ChevronRight />
-          </button>
-        </section>
-      </main>
+          </div>
+          {status}
+          <section className="category-mode-grid" aria-label="Session formats">
+            <button
+              disabled={loading || !canStart}
+              onClick={() => begin(family, 'ten')}
+            >
+              <i className={meta.color}>
+                <Play />
+              </i>
+              <span>
+                <small>NO PAPER</small>
+                <b>10-question drill</b>
+                <em>Strategy appears after you check the answer.</em>
+              </span>
+              <ChevronRight />
+            </button>
+            <button
+              disabled={loading || !canStart}
+              onClick={() => begin(family, 'sprint')}
+            >
+              <i className={meta.color}>
+                <Clock3 />
+              </i>
+              <span>
+                <small>60 SECONDS</small>
+                <b>Timed sprint</b>
+                <em>Session clock only. Keep the work in your head.</em>
+              </span>
+              <ChevronRight />
+            </button>
+          </section>
+        </main>
+      </>
     );
   }
 
@@ -445,6 +483,14 @@ export default function OpsPage() {
           </Button>
         </div>
       </header>
+      {!!limit && (
+        <progress
+          className="session-progress"
+          aria-label="Session progress"
+          value={index + (result ? 1 : 0)}
+          max={limit}
+        />
+      )}
       {status}
       <section className="quiz">
         <div className="quizline">
@@ -474,6 +520,7 @@ export default function OpsPage() {
               onChange={(event) => setAnswer(event.target.value)}
               placeholder="Type your answer"
               aria-label="Your answer"
+              name="answer"
               inputMode="numeric"
               autoComplete="off"
               disabled={!!result}
@@ -520,7 +567,7 @@ export default function OpsPage() {
                   {!result.correct && <small>Correct answer: {result.a}</small>}
                 </span>
                 <button type="button" onClick={goNext}>
-                  Next
+                  {index + 1 >= deck.length ? 'View results' : 'Next'}
                 </button>
               </>
             )}

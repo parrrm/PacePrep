@@ -7,6 +7,12 @@ import {
   openProgressClient,
 } from '@/lib/auth-client';
 import { progressStorageKey } from '@/lib/account-storage';
+import {
+  adaptiveDeck,
+  benchmarkDeck,
+  sessionSize,
+} from '@/lib/practice-engine';
+import TrainingDashboard from './training-dashboard';
 import { isSavedProgress } from '@/lib/progress-validation';
 import { cloudAuthReady, onVercel } from '@/lib/hosting';
 import { signInHref, signOutHref, signInLabel } from '@/lib/hosting';
@@ -17,8 +23,6 @@ import {
   Check,
   ChevronRight,
   Clock3,
-  Flame,
-  FlagTriangleRight,
   Grid3X3,
   Keyboard,
   Moon,
@@ -202,43 +206,8 @@ function dueLabel(stat?: Stat) {
   if (daysAway === 1) return 'Review tomorrow';
   return `Predicted review ${new Date(stat.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
 }
-function practiceStreak(history: Try[]) {
-  const activeDays = new Set(
-      history.filter((item) => !item.skipped).map((item) => day(item.at)),
-    ),
-    cursor = new Date();
-  if (!activeDays.has(day(cursor.getTime())))
-    cursor.setDate(cursor.getDate() - 1);
-  let streak = 0;
-  while (activeDays.has(day(cursor.getTime()))) {
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
-}
-function factWeight(fact: Fact, stats: Record<string, Stat>) {
-  const s = stats[fact.id],
-    l = level(s, TOPICS[fact.topic].target),
-    slow = s && s.total / s.attempts > TOPICS[fact.topic].target,
-    due = !s?.dueAt || s.dueAt <= Date.now(),
-    overdueDays = s?.dueAt ? Math.max(0, (Date.now() - s.dueAt) / DAY_MS) : 2;
-  return (
-    (l === 'Weak' ? 9 : l === 'Learning' ? 5 : l === 'Strong' ? 2 : 0.7) +
-    (slow ? 2 : 0) +
-    (due ? 6 + Math.min(6, overdueDays) : -0.35) +
-    (!s ? 4 : Math.min(3, Math.max(0, (Date.now() - s.last) / 259200000)))
-  );
-}
 function weightedOrder(pool: Fact[], stats: Record<string, Stat>) {
-  return pool
-    .map((fact) => ({
-      fact,
-      rank:
-        -Math.log(Math.max(Number.EPSILON, Math.random())) /
-        factWeight(fact, stats),
-    }))
-    .sort((a, b) => a.rank - b.rank)
-    .map(({ fact }) => fact);
+  return adaptiveDeck(pool, stats);
 }
 function balancedDeck(
   pool: Fact[],
@@ -287,13 +256,8 @@ function modePool(
   retryIds: string[] = [],
 ) {
   if (retryIds.length) {
-    const targets = FACTS.filter((fact) => retryIds.includes(fact.id)),
-      topics = new Set(targets.map((fact) => fact.topic));
-    return expandPool(
-      targets,
-      FACTS.filter((fact) => topics.has(fact.topic)),
-      stats,
-    );
+    const requested = new Set(retryIds);
+    return FACTS.filter((fact) => requested.has(fact.id));
   }
   if (mode === 'learn') return FACTS.filter((fact) => !fact.reverse);
   if (mode === 'focus') {
@@ -302,7 +266,7 @@ function modePool(
         group === 'All groups'
           ? topicFacts
           : topicFacts.filter((fact) => fact.group === group);
-    return expandPool(targets, topicFacts, stats);
+    return targets;
   }
   if (mode === 'weak') {
     const practiced = FACTS.filter((fact) => stats[fact.id]?.attempts >= 2),
@@ -318,33 +282,6 @@ function modePool(
   }
   return FACTS;
 }
-function testDeck(limit: number) {
-  const topics = Object.keys(TOPICS) as Topic[],
-    quota = Math.floor(limit / topics.length),
-    remainder = limit % topics.length,
-    selected = topics.flatMap((topic, index) => {
-      const count = quota + (index < remainder ? 1 : 0),
-        direct = shuffle(
-          FACTS.filter((fact) => fact.topic === topic && !fact.reverse),
-        ),
-        reverse = shuffle(
-          FACTS.filter((fact) => fact.topic === topic && fact.reverse),
-        ),
-        topicDeck: Fact[] = [];
-      while (topicDeck.length < count && (direct.length || reverse.length)) {
-        const source = topicDeck.length % 2 === 0 ? direct : reverse;
-        const fallback = source.length
-          ? source
-          : direct.length
-            ? direct
-            : reverse;
-        const next = fallback.shift();
-        if (next) topicDeck.push(next);
-      }
-      return topicDeck;
-    });
-  return shuffle(selected);
-}
 function createDeck(mode: Mode, pool: Fact[], stats: Record<string, Stat>) {
   const limit =
     mode === 'test10'
@@ -354,9 +291,9 @@ function createDeck(mode: Mode, pool: Fact[], stats: Record<string, Stat>) {
         : mode === 'test50'
           ? 50
           : 0;
-  if (limit) return testDeck(limit);
+  if (limit) return benchmarkDeck(pool, limit);
   if (mode === 'random') return balancedDeck(pool, stats, false);
-  return balancedDeck(pool, stats, true);
+  return adaptiveDeck(pool, stats);
 }
 function topConfusion(history: Try[]) {
   const counts = new Map<string, { ids: [string, string]; count: number }>();
@@ -410,6 +347,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     [ready, setReady] = useState(false),
     [loadError, setLoadError] = useState(false),
     [mode, setMode] = useState<Mode>('mixed'),
+    [limit, setLimit] = useState(10),
     [session, setSession] = useState<Try[]>([]),
     [skippedIds, setSkippedIds] = useState<string[]>([]),
     [profileOpen, setProfileOpen] = useState(false),
@@ -772,6 +710,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
   }
   function sessionDeck(sessionMode: Mode, source: Fact[]) {
     const ordered = createDeck(sessionMode, source, stats);
+    if (['test10', 'test25', 'test50'].includes(sessionMode)) return ordered;
     if (!sessionTargets.current.size) return ordered;
     return [
       ...weightedOrder(
@@ -790,7 +729,8 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     setAnswer('');
     setResult(null);
     started.current = performance.now();
-    setTimeout(() => field.current?.focus(), 20);
+    if (window.matchMedia('(pointer: fine)').matches)
+      setTimeout(() => field.current?.focus(), 20);
   }
   function next(old?: string, excluded = skippedIds) {
     let nextFact = deck.current.shift();
@@ -816,7 +756,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     const resolvedMode =
         m === 'weak' &&
         !FACTS.some((candidate) => stats[candidate.id]?.attempts)
-          ? 'sprint'
+          ? 'mixed'
           : m,
       nextPool = modePool(resolvedMode, stats, topic, group);
     sessionTargets.current = new Set(
@@ -842,6 +782,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     sessionAttempts.current = 0;
     setSkippedIds([]);
     setMode(resolvedMode);
+    setLimit(sessionSize(resolvedMode, nextPool.length));
     setSession([]);
     setLeft(60);
     setView('practice');
@@ -880,6 +821,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     sessionCounted.current = false;
     sessionAttempts.current = 0;
     setMode(sessionMode);
+    setLimit(sessionSize(sessionMode, nextPool.length));
     setSkippedIds([]);
     setSession([]);
     setLeft(60);
@@ -899,6 +841,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     sessionCounted.current = false;
     sessionAttempts.current = 0;
     setMode('weak');
+    setLimit(nextPool.length);
     setSkippedIds([]);
     setSession([]);
     setLeft(60);
@@ -1011,16 +954,9 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     setHistory((items) => [...items, t]);
     setSession((items) => [...items, t]);
     sessionAttempts.current++;
+    if (limit && sessionAttempts.current >= limit) return finishSession();
     next(fact.id, nextSkippedIds);
   }
-  const limit =
-    mode === 'test10'
-      ? 10
-      : mode === 'test25'
-        ? 25
-        : mode === 'test50'
-          ? 50
-          : 0;
   function submit(raw: string) {
     if (result || answerLocked.current || !raw.trim()) return;
     if (
@@ -1052,22 +988,14 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     setSession((s) => [...s, t]);
     sessionAttempts.current++;
     const remainingSkipped = skippedIds.filter((id) => id !== fact.id),
-      answeredCount = session.filter((item) => !item.skipped).length + 1;
+      answeredCount = sessionAttempts.current;
     setSkippedIds(remainingSkipped);
     setResult({ ok, ms, raw });
     advanceAction.current = () => {
-      if (limit && answeredCount >= limit) {
-        const revisit = FACTS.find(
-          (candidate) => candidate.id === remainingSkipped[0],
-        );
-        return revisit ? showFact(revisit) : finishSession();
-      }
+      if (limit && answeredCount >= limit) return finishSession();
       next(fact.id, remainingSkipped);
     };
-    advanceTimer.current = setTimeout(
-      advanceNow,
-      mode === 'sprint' ? 450 : ok ? 800 : 3200,
-    );
+    if (mode === 'sprint') advanceTimer.current = setTimeout(advanceNow, 450);
   }
   useEffect(() => {
     if (view !== 'practice' || mode !== 'sprint') return;
@@ -1114,26 +1042,6 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
     return () => removeEventListener('keydown', h);
   });
   const today = history.filter((x) => day(x.at) === day()),
-    topicRows = (Object.keys(TOPICS) as Topic[])
-      .map((t) => {
-        const fs = FACTS.filter((f) => f.topic === t),
-          pr = fs.filter((f) => stats[f.id]),
-          score =
-            pr.reduce(
-              (n, f) =>
-                n +
-                { Weak: 12, Learning: 42, Strong: 72, Mastered: 100 }[
-                  level(stats[f.id], TOPICS[t].target)
-                ],
-              0,
-            ) / fs.length;
-        return {
-          t,
-          score: Math.round(score),
-          tries: history.filter((x) => x.topic === t),
-        };
-      })
-      .sort((a, b) => a.score - b.score),
     mastered = FACTS.filter(
       (f) => level(stats[f.id], TOPICS[f.topic].target) === 'Mastered',
     ).length;
@@ -1182,16 +1090,16 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           <Link href="/grok-test">open test checklist</Link>
         </output>
       )}
-      {view !== 'practice' && view !== 'summary' && <MathAtmosphere />}
-      <Header
-        dark={dark}
-        setDark={setDark}
-        view={view}
-        setView={setView}
-        onMixed={() => start('mixed')}
-        onProfile={() => setProfileOpen(true)}
-        attempts={history.length}
-      />
+      {view !== 'practice' && (
+        <Header
+          dark={dark}
+          setDark={setDark}
+          view={view}
+          setView={setView}
+          onMixed={() => start('mixed')}
+          onProfile={() => setProfileOpen(true)}
+        />
+      )}
       {localSaveError && (
         <p className="storage-warning" role="alert">
           This browser could not save progress. Keep this tab open and allow
@@ -1213,13 +1121,12 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
         />
       )}
       {view === 'dashboard' && (
-        <HomeDashboard
+        <TrainingDashboard
           today={today}
           history={history}
           stats={stats}
           completedSessions={completedSessions}
-          rows={topicRows}
-          start={start}
+          start={() => start('mixed')}
           retry={retryFacts}
           openPractice={() => setView('practiceHub')}
         />
@@ -1246,7 +1153,7 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
           setAnswer={setAnswer}
           input={input}
           setInput={setInput}
-          current={session.filter((item) => !item.skipped).length + 1}
+          current={session.length + (result ? 0 : 1)}
           limit={limit}
           left={mode === 'sprint' ? left : null}
           end={finishSession}
@@ -1278,10 +1185,6 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
   );
 }
 
-function MathAtmosphere() {
-  return <div className="math-atmosphere" aria-hidden="true" />;
-}
-
 function Header({
   dark,
   setDark,
@@ -1289,7 +1192,6 @@ function Header({
   setView,
   onMixed,
   onProfile,
-  attempts,
 }: {
   dark: boolean;
   setDark: (x: boolean) => void;
@@ -1297,7 +1199,6 @@ function Header({
   setView: (v: 'dashboard' | 'practiceHub' | 'mastery') => void;
   onMixed: () => void;
   onProfile: () => void;
-  attempts: number;
 }) {
   return (
     <header
@@ -1336,16 +1237,6 @@ function Header({
         <Button variant="outline" className="nav-mixed" onClick={onMixed}>
           <Play fill="currentColor" /> Mixed practice
         </Button>
-        <div className="nav-xp">
-          <span className="sr-only">{attempts % 50} of 50 XP</span>
-          <span>
-            <b>LVL {Math.floor(attempts / 50) + 1}</b>
-            <small>{Math.floor(attempts / 10)} focus tokens</small>
-          </span>
-          <i>
-            <b style={{ width: `${(attempts % 50) * 2}%` }} />
-          </i>
-        </div>
         <button
           className="icon profile-trigger"
           aria-label="Open learner profile and settings"
@@ -1422,10 +1313,9 @@ function ProfilePanel({
             <User />
           </i>
           <span>
-            <b>Level {Math.floor(attempts / 50) + 1}</b>
+            <b>Your saved practice</b>
             <small>
-              {attempts} answers · {mastered} mastered facts ·{' '}
-              {Math.floor(attempts / 10)} focus tokens
+              {attempts} answers · {mastered} mastered facts
             </small>
           </span>
         </div>
@@ -1506,328 +1396,6 @@ function ProfilePanel({
         </footer>
       </DialogContent>
     </Dialog>
-  );
-}
-function HomeDashboard({
-  today,
-  history,
-  stats,
-  completedSessions,
-  rows,
-  start,
-  retry,
-  openPractice,
-}: {
-  today: Try[];
-  history: Try[];
-  stats: Record<string, Stat>;
-  completedSessions: number;
-  rows: { t: Topic; score: number; tries: Try[] }[];
-  start: (m: Mode) => void;
-  retry: (ids: string[]) => void;
-  openPractice: () => void;
-}) {
-  const [renderedAt] = useState(() => Date.now());
-  const scoredHistory = history.filter((item) => !item.skipped);
-  const streak = practiceStreak(history);
-  const recent = scoredHistory.slice(-20);
-  const comparable = comparableAttempts(scoredHistory);
-  const prior = comparable.before;
-  const accuracyDelta =
-    prior.length >= 5 ? accuracy(comparable.now) - accuracy(prior) : null;
-  const speedDelta =
-    prior.length >= 5
-      ? (average(prior) - average(comparable.now)) / 1000
-      : null;
-  const scoreFor = (predicate: (fact: Fact) => boolean) => {
-    const facts = FACTS.filter(predicate);
-    if (!facts.length) return 0;
-    const score = facts.reduce((sum, item) => {
-      const status = stats[item.id]
-        ? level(stats[item.id], TOPICS[item.topic].target)
-        : 'Weak';
-      return (
-        sum +
-        (stats[item.id]?.attempts
-          ? { Weak: 12, Learning: 42, Strong: 72, Mastered: 100 }[status]
-          : 0)
-      );
-    }, 0);
-    return Math.round(score / facts.length);
-  };
-  const categories = [
-    {
-      key: 'fractions',
-      label: 'Fractions',
-      score: scoreFor((fact) => fact.topic === 'fractions' && !!fact.reverse),
-      tone: 'violet',
-    },
-    {
-      key: 'tables',
-      label: 'Tables',
-      score: scoreFor((fact) => fact.topic === 'tables'),
-      tone: 'blue',
-    },
-    {
-      key: 'powers',
-      label: 'Squares & cubes',
-      score: scoreFor(
-        (fact) => fact.topic === 'squares' || fact.topic === 'cubes',
-      ),
-      tone: 'amber',
-    },
-    {
-      key: 'percentages',
-      label: 'Percentages',
-      score: scoreFor((fact) => fact.topic === 'fractions' && !fact.reverse),
-      tone: 'green',
-    },
-  ].sort((a, b) => a.score - b.score);
-  const overall = Math.round(
-    categories.reduce((sum, row) => sum + row.score, 0) / categories.length,
-  );
-  const weakest = rows
-    .filter(
-      (row) =>
-        row.tries.some((item) => !item.skipped) &&
-        (accuracy(row.tries) < 85 || average(row.tries) > 8000),
-    )
-    .sort((a, b) => {
-      const aAccuracy = accuracy(a.tries);
-      const bAccuracy = accuracy(b.tries);
-      return aAccuracy - bAccuracy || average(b.tries) - average(a.tries);
-    })[0];
-  const dueFacts = FACTS.filter((item) => {
-    const stat = stats[item.id];
-    return stat?.attempts && (!stat.dueAt || stat.dueAt <= renderedAt);
-  });
-  const estimatedMinutes = Math.max(1, Math.ceil((dueFacts.length * 2.5) / 60));
-  const trendText = (value: number | null, suffix: string) =>
-    value === null
-      ? 'Baseline forming'
-      : (value >= 0 ? '+' : '') +
-        value.toFixed(1) +
-        suffix +
-        ' on matching facts';
-
-  return (
-    <div className="page home-dashboard dashboard-v4">
-      <section
-        className="dashboard-scoreboard"
-        aria-label="Overall learning pulse"
-      >
-        <div className="score-hero">
-          <small>OVERALL RECALL MASTERY</small>
-          <div>
-            <strong>{history.length ? overall : '—'}</strong>
-            <span>/100</span>
-          </div>
-          <p>
-            {history.length
-              ? 'Fact-level score across the active recall bank.'
-              : 'Complete a diagnostic to establish your first mastery score.'}
-          </p>
-          <div
-            className="xp-track"
-            aria-label={
-              'Level ' + (Math.floor(history.length / 50) + 1) + ' progress'
-            }
-          >
-            <span>
-              <b>LEVEL {Math.floor(history.length / 50) + 1}</b>
-              <em>{history.length % 50}/50 XP</em>
-            </span>
-            <i>
-              <b style={{ width: (history.length % 50) * 2 + '%' }} />
-            </i>
-          </div>
-        </div>
-        <div className="streak-hero">
-          <i className={streak ? 'active' : ''}>
-            <Flame />
-          </i>
-          <small>CURRENT STREAK</small>
-          <strong>{streak}</strong>
-          <b>{streak === 1 ? 'day' : 'days'}</b>
-          <p>
-            {streak
-              ? 'Keep the chain alive with facts due today.'
-              : 'One accurate session starts the chain.'}
-          </p>
-        </div>
-      </section>
-
-      <section className="due-nudge" aria-label="Facts due today">
-        <span>
-          <small>DUE-TODAY MICRO SESSION</small>
-          <h1>
-            {dueFacts.length
-              ? dueFacts.length + ' facts are due today'
-              : 'Your next review is being scheduled'}
-          </h1>
-          <p>
-            {dueFacts.length
-              ? 'About ' +
-                estimatedMinutes +
-                ' ' +
-                (estimatedMinutes === 1 ? 'minute' : 'minutes') +
-                ' · PacePrep Recall Loop prioritises overdue and fragile facts.'
-              : 'Start a mixed set while the Leitner scheduler builds your first review intervals.'}
-          </p>
-        </span>
-        <Button
-          onClick={() =>
-            dueFacts.length
-              ? retry(dueFacts.map((item) => item.id))
-              : start('mixed')
-          }
-        >
-          <Play fill="currentColor" />{' '}
-          {dueFacts.length ? 'Review due facts' : 'Start mixed practice'}
-        </Button>
-      </section>
-
-      <section
-        className="dashboard-trends"
-        aria-label="Recent performance trends"
-      >
-        <article>
-          <i>
-            <Check />
-          </i>
-          <span>
-            <small>ACCURACY TREND</small>
-            <strong>
-              {recent.length ? accuracy(recent) + '%' : 'Unranked'}
-            </strong>
-            <em>{trendText(accuracyDelta, ' pts')}</em>
-          </span>
-        </article>
-        <article>
-          <i>
-            <Clock3 />
-          </i>
-          <span>
-            <small>AVERAGE RESPONSE</small>
-            <strong>
-              {recent.length ? (average(recent) / 1000).toFixed(1) + 's' : '—'}
-            </strong>
-            <em>
-              {speedDelta === null
-                ? 'Baseline forming'
-                : Math.abs(speedDelta).toFixed(1) +
-                  's ' +
-                  (speedDelta >= 0 ? 'faster' : 'slower') +
-                  ' on matching facts'}
-            </em>
-          </span>
-        </article>
-        <article>
-          <i>
-            <Target />
-          </i>
-          <span>
-            <small>DRILLS COMPLETED</small>
-            <strong>{completedSessions}</strong>
-            <em>{today.length} questions today</em>
-          </span>
-        </article>
-      </section>
-
-      <section
-        className="mastery-overview panel"
-        aria-labelledby="mastery-overview-title"
-      >
-        <header>
-          <span>
-            <small>MASTERY BY CATEGORY</small>
-            <h2 id="mastery-overview-title">Know where to train next</h2>
-          </span>
-          <button onClick={openPractice}>
-            Open practice hub <ChevronRight />
-          </button>
-        </header>
-        {!history.length ? (
-          <div className="dashboard-empty">
-            <BarChart3 />
-            <span>
-              <b>No placeholder percentages</b>
-              <small>
-                Your real category bars appear after the first drill.
-              </small>
-            </span>
-            <Button onClick={() => start('sprint')}>
-              Take 1-minute diagnostic
-            </Button>
-          </div>
-        ) : (
-          <div className="category-bars">
-            {categories.map((row) => (
-              <div key={row.key}>
-                <span>
-                  <b>{row.label}</b>
-                  <em>{row.score}/100</em>
-                </span>
-                <i className={row.tone}>
-                  <b style={{ width: row.score + '%' }} />
-                </i>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section
-        className="weakest-callout"
-        aria-label="Weakest category recommendation"
-      >
-        <div>
-          <i>
-            <FlagTriangleRight />
-          </i>
-          <span>
-            <small>FOCUS NEXT</small>
-            <h2>
-              {weakest
-                ? TOPICS[weakest.t].short
-                : history.length
-                  ? 'Your practised topics are on track'
-                  : 'Find your first target area'}
-            </h2>
-            <p>
-              {weakest
-                ? accuracy(weakest.tries) +
-                  '% accurate · ' +
-                  Math.max(0, 85 - accuracy(weakest.tries)) +
-                  ' point gap to the stable threshold · ' +
-                  (average(weakest.tries) / 1000).toFixed(1) +
-                  's average'
-                : history.length
-                  ? 'No topic is below 85% accuracy or above 8 seconds on average. Keep reviewing to make that performance durable.'
-                  : 'A short diagnostic identifies the fact family that will return the most time.'}
-            </p>
-          </span>
-        </div>
-        <Button
-          onClick={() =>
-            weakest
-              ? retry(
-                  FACTS.filter((fact) => fact.topic === weakest.t).map(
-                    (fact) => fact.id,
-                  ),
-                )
-              : start(history.length ? 'mixed' : 'sprint')
-          }
-        >
-          <Target />{' '}
-          {weakest
-            ? 'Drill weaknesses'
-            : history.length
-              ? 'Continue review'
-              : 'Start diagnostic'}
-        </Button>
-      </section>
-    </div>
   );
 }
 
@@ -2209,14 +1777,14 @@ function Practice({
   return (
     <div className="practicePage">
       <header className="practiceHead">
-        <button className="brand">
+        <span className="brand">
           <b>
             <Zap />
           </b>
           Pace<span>Prep</span>
-        </button>
+        </span>
         <span>
-          Question {result ? current - 1 : current}
+          Question {Math.min(current, limit || current)}
           {limit ? ` of ${limit}` : ''}
         </span>
         <div>
@@ -2234,6 +1802,14 @@ function Practice({
           </Button>
         </div>
       </header>
+      {!!limit && (
+        <progress
+          className="session-progress"
+          aria-label="Session progress"
+          value={result ? current : current - 1}
+          max={limit}
+        />
+      )}
       <section className="quiz">
         <div className="quizline">
           <small>{TOPICS[fact.topic].name}</small>
@@ -2243,12 +1819,14 @@ function Practice({
           <span>
             <button
               className={input === 'mcq' ? 'active' : ''}
+              aria-pressed={input === 'mcq'}
               onClick={() => setInput('mcq')}
             >
               Choices
             </button>
             <button
               className={input === 'typed' ? 'active' : ''}
+              aria-pressed={input === 'typed'}
               onClick={() => setInput('typed')}
             >
               Type
@@ -2299,7 +1877,8 @@ function Practice({
                 ref={field}
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Type your answer"
+                placeholder="Your answer…"
+                name="answer"
                 aria-label="Your answer"
                 inputMode={fact.a.includes('/') ? 'text' : 'decimal'}
                 autoComplete="off"
@@ -2338,6 +1917,7 @@ function Practice({
                   ))}
                   <button
                     type="button"
+                    aria-label="Delete last digit"
                     disabled={!!result}
                     onClick={() => setAnswer(answer.slice(0, -1))}
                   >
@@ -2373,15 +1953,28 @@ function Practice({
                     <p>
                       {decimalSlip(result.raw, fact.a)
                         ? 'Possible decimal-place slip: check where the decimal belongs.'
-                        : 'Compare the prompt and answer as one pair. You’ll review the explanation after this session.'}
+                        : strategyFor({
+                            id: fact.id,
+                            topic: fact.topic,
+                            q: fact.q,
+                            a: fact.a,
+                            correct: false,
+                            ms: result.ms,
+                            at: 0,
+                          }).text}
                     </p>
                   )}
                 </span>
                 <button
                   onClick={continueNext}
-                  aria-label="Continue to next question"
+                  aria-label={
+                    limit && current >= limit
+                      ? 'View session results'
+                      : 'Continue to next question'
+                  }
                 >
-                  Continue <ChevronRight />
+                  {limit && current >= limit ? 'View results' : 'Continue'}{' '}
+                  <ChevronRight />
                 </button>
               </>
             )}
@@ -2400,8 +1993,11 @@ function Practice({
           )}
         </div>
         <p>
-          <Keyboard /> Press <kbd>1</kbd>–<kbd>4</kbd> to answer · <kbd>S</kbd>{' '}
-          to skip · Enter to continue · accuracy before speed
+          <Keyboard />{' '}
+          {input === 'mcq' ? 'Keys 1–4 to answer · S to skip · ' : ''}
+          {left === null
+            ? 'Enter to continue · Take time to understand each answer.'
+            : '60-second sprint · Answers advance automatically.'}
         </p>
       </section>
       {confirmEnd && (

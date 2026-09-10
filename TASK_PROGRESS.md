@@ -1,6 +1,25 @@
 # PacePrep production hardening
 
-Updated: 2026-09-09. Base `8fa2bd9`; checkpoint 1 is `cdbcfbe`, checkpoint 2 is `96c9700`, checkpoint 3 is `0c15b87`. Checkpoint 4 is the commit containing this update on `codex/paceprep-hardening`. All locally actionable checkpoints are complete and validated. External release gates below remain incomplete. All branch changes belong to this task.
+Updated: 2026-09-10. Base `8fa2bd9`; checkpoints 1–4 are `cdbcfbe`, `96c9700`, `0c15b87`, and `bb91ef7`. The user requested a new UI/UX and engine improvement pass, checkpoint 5 below, on `codex/paceprep-hardening`. External release gates remain separate. Pre-existing untracked `supabase/.temp/` belongs to the user and must not be committed or removed.
+
+## Completed checkpoint 5 — training interface and question selection
+
+Implementation and validation complete. Resumed from `bb91ef7` and preserved both database adapters, authentication boundaries, account storage and production aliases.
+
+- Replaced the score-heavy dashboard with a next-session action, exact due-review set, recent accuracy, correct-answer pace, explored-fact count and completed sessions. Empty measurements display a dash. Removed decorative math, XP and focus-token counters from the training header/profile.
+- Added a responsive practice studio, shared navigation on practice/operations pages, clearer topic cards, navy/teal theme, visible focus styles and native session progress. The static practice catalog now renders on the server. Phone inputs no longer automatically open the keyboard.
+- Extracted a shared, testable selection engine. Actual due reviews precede recent mistakes, new facts and retention practice; topics interleave within each priority. Decks deduplicate IDs and do not mutate the bank or saved statistics.
+- Fixed category benchmarks selecting from the entire bank. Benchmarks stay inside the chosen pool, balance available topics/directions, and bypass subsequent adaptive reordering. Focused and missed-question retries no longer add unrelated questions.
+- Ordinary untimed recall sessions finish after ten attempts (or the smaller target pool). Skips count toward completion. Untimed feedback remains until Continue/Enter, and the final answer offers View results. Sprint timing remains deadline-based. Operations now select from saved learning state and offer a real retry containing only missed questions.
+- Added six engine regression tests and four browser scenarios per viewport covering persistent feedback, exact one-fact recall/operations retries, benchmark boundaries/skip completion, and light/dark dashboard accessibility.
+
+Verified: TypeScript, full lint, all **69 unit/integration tests**, Vercel build/output checks (**55 public assets**) and Vercel E2E (**30 passed / 2 Sites-only skips**, desktop and phone). Sites build and E2E passed (**35 passed / no skips**, including three real local D1 scenarios). The first Sites runner timed out before readiness; a diagnostic start returned HTTP 200 and was stopped before the full suite passed on retry. No validation timeout was treated as a pass. Final `git diff --check` passed.
+
+Fresh local Lighthouse mobile simulation: homepage **75 performance / 100 accessibility / 100 best practices / 100 SEO**, LCP **4.85s**, CLS **0.000075**, TBT **9.5ms**; practice **77 / 100 / 100 / 100**, LCP **4.66s**, CLS **0**, TBT **11ms**. These local Nitro results do not establish a speed improvement or deployed performance. Reports are in ignored `outputs/lighthouse/`.
+
+Manual browser review verified the practice studio and dashboard on desktop and the dashboard at 390px. No production release, external account change or database migration was performed.
+
+The local production preview is available at `http://localhost:3000/practice` (HTTP 200 verified). This checkpoint is the commit containing this update. Exact next step: review the new practice flow locally, then complete the external review-branch CI and staging-auth gates below before a requested production release. No local checkpoint 5 implementation work remains.
 
 ## Completed checkpoint 4 — database integration, accessibility and audit tooling
 
@@ -37,7 +56,7 @@ Final browser results: **Vercel 16 passed, 2 intentionally skipped; Sites 18 pas
 
 ## Validation actually performed
 
-Final source verification on 2026-09-09:
+Historical checkpoint 4 verification on 2026-09-09 (checkpoint 5 results are above):
 
 - `pnpm install --frozen-lockfile`: PASS during this task.
 - `pnpm exec tsc --noEmit`: PASS.
@@ -71,8 +90,8 @@ No project environment variables or connected storage were shown. Node 24.x, Oth
 
 ## Exact next step / runtime
 
-Checkpoint 4 closes the remaining local implementation and validation work. **Exact next step:** configure GitHub write authentication, then run `git push -u origin codex/paceprep-hardening` and inspect all three CI jobs for that commit. The dry run already established that credentials are missing; do not repeatedly rerun local checkpoints to hide that blocker. A review-branch push may create a Vercel preview; preserve main and both production aliases.
+Checkpoint 5 closes the newly requested UI/UX and engine pass. **Exact next step:** review `http://localhost:3000/practice`, then verify GitHub write authentication and push `codex/paceprep-hardening` for remote CI when release preparation resumes. The checkpoint 4 dry run found missing credentials; access has not been retested during the UI pass. Inspect all three CI jobs for the pushed commit. A review-branch push may create a Vercel preview; preserve main and both production aliases.
 
 Next external gate: provision/access the intended staging Supabase project, apply both migrations in order, supply two empty disposable accounts through the secure test-only environment in `docs/VERCEL.md`, run `pnpm test:staging`, and verify confirmation/recovery/OAuth plus the deployed app flow. Keep cloud auth disabled until these pass. Obtain real operator/support/grievance details and perform real-device/assistive-technology checks before general launch. No production release was performed. Use `docs/DEPLOY-NOW.md` for a later requested release.
 
-Repository: `/Users/apple/Documents/Codex/2026-09-08/build-x20/work/PacePrep`. Node: `/Users/apple/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`; prepend that directory to PATH for pnpm. Playwright stopped its owned test servers after the runs. No development server was left running; check liveness before starting `pnpm dev:vercel`. Vinext binds localhost/IPv6 in this environment even when passed `--host 127.0.0.1`. Do not build while using dev: both share generated state. Logs/intermediate scripts are outside the repo in parent `work`; deliverables belong in parent `outputs`. Never print secrets. Read this file, AGENTS.md, status and log on resume.
+Repository: `/Users/apple/Documents/Codex/2026-09-08/build-x20/work/PacePrep`. Node: `/Users/apple/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`; prepend that directory to PATH for pnpm. Playwright stopped its owned test servers. A Vercel production preview was left running on localhost:3000 using `PACEPREP_PLATFORM=vercel NITRO_PRESET=vercel pnpm exec vite preview --host localhost --port 3000 --strictPort`; check liveness before starting another server. Vinext binds localhost/IPv6 here. Do not build while using dev: both share generated state. A stale generated Vite cache was moved outside the repo to `../paceprep-vite-cache-before-ui-refresh` after an initial dev-only invalid-hook failure; fresh dev and both production builds/tests succeeded. Logs for checkpoint 5 are `/tmp/paceprep-ui-*.log`; ignored Lighthouse reports are `outputs/lighthouse/`. Never print secrets or include the user's `supabase/.temp/` in commits. Read this file, AGENTS.md, status and log on resume.
