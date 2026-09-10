@@ -10,6 +10,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FACTS } from '@/lib/recall-bank';
 import { adaptiveDeck, practiceReason } from '@/lib/practice-engine';
+import {
+  performanceInsight,
+  performanceTrend,
+} from '@/lib/performance-insights';
 import type { Stat, ProgressAttempt } from '@/lib/learning-progress';
 import { SiteLink as Link } from './site-link';
 
@@ -82,6 +86,28 @@ export default function TrainingDashboard({
       ),
     },
   ];
+  const insight = performanceInsight(recent);
+  const trend = performanceTrend(history, 10);
+  const recentForPatterns = history.slice(-40);
+  const weakness = categories
+    .map((category) => {
+      const ids = new Set(category.facts.map((fact) => fact.id));
+      const attempts = recentForPatterns.filter((attempt) =>
+        ids.has(attempt.id),
+      );
+      const lost = attempts.filter(
+        (attempt) => attempt.skipped || !attempt.correct,
+      ).length;
+      return { ...category, attempts: attempts.length, lost };
+    })
+    .filter((category) => category.attempts)
+    .sort(
+      (a, b) => b.lost / b.attempts - a.lost / a.attempts || b.lost - a.lost,
+    )[0];
+  const action = next.length ? () => retry(next.map((fact) => fact.id)) : start;
+  const actionLabel = next.length
+    ? `Review ${next.length} due ${next.length === 1 ? 'fact' : 'facts'}`
+    : 'Start mixed practice';
   return (
     <div className="page training-dashboard">
       <header className="workspace-title">
@@ -89,13 +115,13 @@ export default function TrainingDashboard({
           <small>YOUR TRAINING DESK</small>
           <h1>
             {history.length
-              ? 'A little practice. Lasting recall.'
-              : 'Make your first ten count.'}
+              ? 'Know where you stand. Improve the next thing.'
+              : 'Find your starting point in 10 questions.'}
           </h1>
           <p>
             {history.length
-              ? 'Pick up with the facts that need your attention.'
-              : 'Start with a short set. Your answers shape what comes next.'}
+              ? 'Your recent answers now point to one clear next action.'
+              : 'Your answers will reveal whether accuracy or recall speed needs attention first.'}
           </p>
         </div>
         <span className="session-badge">
@@ -129,13 +155,9 @@ export default function TrainingDashboard({
               Explanations included
             </span>
           </div>
-          <Button
-            onClick={() =>
-              next.length ? retry(next.map((fact) => fact.id)) : start()
-            }
-          >
+          <Button onClick={action}>
             <Play size={17} fill="currentColor" />
-            {next.length ? 'Review due facts' : 'Start mixed practice'}
+            {actionLabel}
           </Button>
           {due.length > next.length && (
             <small className="remaining-reviews">
@@ -177,17 +199,77 @@ export default function TrainingDashboard({
           </span>
         </article>
         <article>
-          <small>Recall facts explored</small>
-          <strong>
-            {FACTS.filter((fact) => stats[fact.id]?.attempts).length}
+          <small>Readiness signal</small>
+          <strong className="metric-label">
+            {insight.status === 'unmeasured'
+              ? 'Not measured'
+              : insight.status === 'accuracy-risk'
+                ? 'Accuracy risk'
+                : insight.status === 'building'
+                  ? 'Building'
+                  : insight.status === 'pace-next'
+                    ? 'Pace next'
+                    : 'On track'}
           </strong>
-          <span>Distinct prompts practised</span>
+          <span>Based on your last {recent.length || 20} answers</span>
         </article>
         <article>
-          <small>Sessions completed</small>
-          <strong>{completedSessions}</strong>
-          <span>Across your saved practice</span>
+          <small>Recent trend</small>
+          <strong className="metric-label">
+            {trend
+              ? `${trend.accuracyDelta >= 0 ? '+' : ''}${trend.accuracyDelta} pts`
+              : `${completedSessions} ${completedSessions === 1 ? 'session' : 'sessions'}`}
+          </strong>
+          <span>
+            {trend
+              ? `Latest ${trend.sampleSize} vs previous ${trend.sampleSize}`
+              : 'Complete 20 answers to unlock a trend'}
+          </span>
         </article>
+      </section>
+      <section
+        className={`dashboard-guidance insight-${insight.status}`}
+        aria-labelledby="readiness-title"
+      >
+        <header>
+          <div>
+            <small>YOUR READINESS SIGNAL</small>
+            <h2 id="readiness-title">{insight.headline}</h2>
+          </div>
+          {weakness?.lost ? (
+            <span>
+              Main pattern: {weakness.name} · {weakness.lost}{' '}
+              {weakness.lost === 1 ? 'answer' : 'answers'} to fix from recent
+              practice
+            </span>
+          ) : null}
+        </header>
+        <div className="insight-flow">
+          <article>
+            <small>WHAT HAPPENED</small>
+            <p>
+              {history.length
+                ? insight.what
+                : 'No practice answers have been recorded yet.'}
+            </p>
+          </article>
+          <article>
+            <small>WHY IT MATTERS</small>
+            <p>{insight.why}</p>
+          </article>
+          <article>
+            <small>WHAT TO DO NEXT</small>
+            <p>{insight.next}</p>
+          </article>
+        </div>
+        <footer>
+          <span>
+            <Check size={17} aria-hidden="true" /> Attempt recorded
+            <ArrowUpRight size={16} aria-hidden="true" /> Pattern identified
+            <ArrowUpRight size={16} aria-hidden="true" /> Action ready
+          </span>
+          <Button onClick={action}>Do This Next: {actionLabel}</Button>
+        </footer>
       </section>
       <section className="training-categories" aria-labelledby="your-topics">
         <header>
@@ -231,14 +313,14 @@ export default function TrainingDashboard({
         <div>
           <h2>
             {accuracy === null
-              ? 'Your starting point is yours.'
+              ? 'Your improvement loop starts with one attempt.'
               : accuracy >= 85
                 ? 'Your accuracy is on track.'
                 : 'Give the difficult facts another look.'}
           </h2>
           <p>
             {accuracy === null
-              ? 'There is no score to catch up with. A short session gives you a useful starting point.'
+              ? 'Attempt, analyse, fix the misses, and compare the next session. Every result should lead to an action.'
               : accuracy >= 85
                 ? 'Review on another day to test retention, then try a sprint when you feel ready.'
                 : 'Use the explanation after each answer. Recent mistakes get priority in your next mixed set.'}

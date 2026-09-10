@@ -32,6 +32,7 @@ import {
 import { answersMatch } from '@/lib/recall-math';
 import { adaptiveDeck } from '@/lib/practice-engine';
 import { WorkspaceHeader } from '../workspace-header';
+import { performanceInsight } from '@/lib/performance-insights';
 
 type Try = {
   id: string;
@@ -274,6 +275,7 @@ export default function OpsPage() {
         .slice(0, 3),
     [log],
   );
+  const insight = performanceInsight(log);
 
   if (stage === 'done') {
     return (
@@ -294,24 +296,37 @@ export default function OpsPage() {
           </div>
           {status}
           <section className="panel operation-empty">
-            <h2>
-              {weak.length
-                ? 'Turn the misses into recall.'
-                : 'A useful step forward.'}
-            </h2>
-            <p>
-              {weak.length
-                ? 'Read the strategy, then try just these questions again at your own pace.'
-                : 'A later review checks what sticks. Move on when you feel ready.'}
-            </p>
+            <div className={`result-action-plan insight-${insight.status}`}>
+              <h2>{insight.headline}</h2>
+              <div className="insight-flow">
+                <article>
+                  <small>WHAT HAPPENED</small>
+                  <p>{insight.what}</p>
+                </article>
+                <article>
+                  <small>WHY IT MATTERS</small>
+                  <p>{insight.why}</p>
+                </article>
+                <article>
+                  <small>WHAT TO DO NEXT</small>
+                  <p>{insight.next}</p>
+                </article>
+              </div>
+            </div>
             {weak.length ? (
-              <ul>
-                {weak.map((item) => (
-                  <li key={item.id}>
-                    {item.q} {item.a} — {item.strategy}
-                  </li>
-                ))}
-              </ul>
+              <div className="operation-misses">
+                <h2>Questions costing you marks or time</h2>
+                <ul>
+                  {weak.map((item) => (
+                    <li key={item.id}>
+                      <b>
+                        {item.q} {item.a}
+                      </b>
+                      <span>{item.strategy}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
               <p>
                 {log.length
@@ -561,10 +576,20 @@ export default function OpsPage() {
                 <i>{result.correct ? <Check /> : <RotateCcw />}</i>
                 <span>
                   <b>
-                    {result.correct ? 'Correct. ' : 'Lock this in. '}
-                    {result.strategy} — {(result.ms / 1000).toFixed(2)} sec
+                    {result.correct
+                      ? `Correct in ${(result.ms / 1000).toFixed(2)} seconds.`
+                      : `Not yet — ${(result.ms / 1000).toFixed(2)} seconds.`}
                   </b>
-                  {!result.correct && <small>Correct answer: {result.a}</small>}
+                  <small>
+                    {result.correct
+                      ? 'Reliable mental calculation protects time for harder exam steps.'
+                      : `Correct answer: ${result.a}`}
+                  </small>
+                  <p>
+                    {result.correct
+                      ? 'Next: keep this accuracy as the numbers change.'
+                      : `Why it matters: hesitation here can cost time and a mark. Next: ${result.strategy}`}
+                  </p>
                 </span>
                 <button type="button" onClick={goNext}>
                   {index + 1 >= deck.length ? 'View results' : 'Next'}

@@ -5,6 +5,7 @@ import { ArrowRight, Check, Clock3, RotateCcw, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BASELINE_FACTS, type BaselineAttempt } from '@/lib/baseline';
 import { answersMatch } from '@/lib/recall-math';
+import { performanceInsight } from '@/lib/performance-insights';
 
 export default function BaselineDiagnostic({
   onSave,
@@ -33,6 +34,7 @@ export default function BaselineDiagnostic({
       answered.length /
       1000
     : 0;
+  const insight = performanceInsight(attempts, 2500);
 
   useEffect(() => {
     if (stage !== 'running') return;
@@ -163,15 +165,23 @@ export default function BaselineDiagnostic({
               <small>Accuracy</small>
             </div>
           </div>
-          <p className="baseline-takeaway">
-            {answered.length < 5
-              ? 'A small starting sample. Complete a longer drill before drawing conclusions.'
-              : correct / answered.length < 0.85
-                ? 'Your first priority: accurate recall. We’ll revisit missed facts before chasing speed.'
-                : average > 2.5
-                  ? 'Your accuracy is a foundation. Next, reduce the time spent reconstructing each fact.'
-                  : 'A quick starting pace. Spaced reviews will test whether it stays reliable.'}
-          </p>
+          <div className={`baseline-action-plan insight-${insight.status}`}>
+            <strong>{insight.headline}</strong>
+            <div>
+              <span>
+                <small>WHAT HAPPENED</small>
+                <p>{insight.what}</p>
+              </span>
+              <span>
+                <small>WHY IT MATTERS</small>
+                <p>{insight.why}</p>
+              </span>
+              <span>
+                <small>WHAT TO DO NEXT</small>
+                <p>{insight.next}</p>
+              </span>
+            </div>
+          </div>
           <small>
             {answered.length} answered ·{' '}
             {attempts.filter((a) => a.skipped).length} skipped · practice
@@ -188,12 +198,12 @@ export default function BaselineDiagnostic({
         <>
           <h2 id="baseline-title">
             {stage === 'ready'
-              ? 'How quickly does it come back?'
+              ? 'Find your first mark-saving priority'
               : `Fact ${index + 1} of ${BASELINE_FACTS.length}`}
           </h2>
           <p>
             {stage === 'ready'
-              ? 'Try 12 varied facts. Find your pace and your first training priority.'
+              ? 'Try 12 varied facts. See whether accuracy or recall speed needs attention first.'
               : 'Choose the answer. Accuracy matters more than speed.'}
           </p>
           <div className="baseline-question" aria-live="polite">
@@ -237,10 +247,10 @@ export default function BaselineDiagnostic({
                     {feedback.correct ? <Check /> : <RotateCcw />}
                     <span>
                       {feedback.skipped
-                        ? 'Saved for review'
+                        ? 'Skipped. This may be costing time under pressure, so it will return in your focused review.'
                         : feedback.correct
-                          ? `Correct · ${(feedback.ms / 1000).toFixed(2)}s`
-                          : `Recall this pair: ${fact.a}`}
+                          ? `Correct in ${(feedback.ms / 1000).toFixed(2)} seconds. Keep this accuracy as the questions change.`
+                          : `Not yet — the correct answer is ${fact.a}. This pair will return in your focused review.`}
                     </span>
                   </>
                 ) : (

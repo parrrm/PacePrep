@@ -58,6 +58,7 @@ import {
 } from '@/lib/learning-progress';
 import { InstallButton } from './pwa-provider';
 import { type BaselineAttempt } from '@/lib/baseline';
+import { performanceInsight } from '@/lib/performance-insights';
 import {
   Dialog,
   DialogContent,
@@ -1940,30 +1941,38 @@ function Practice({
                 <span>
                   <b>
                     {result.ok
-                      ? 'Correct. Keep the pace.'
-                      : 'A fact to lock in.'}{' '}
-                    — {(result.ms / 1000).toFixed(2)} sec
+                      ? `Correct in ${(result.ms / 1000).toFixed(2)} seconds.`
+                      : `Not yet — ${(result.ms / 1000).toFixed(2)} seconds.`}
                   </b>
-                  {!result.ok && (
+                  {result.ok ? (
+                    <small>
+                      Reliable recall protects time for reasoning in the exam.
+                    </small>
+                  ) : (
                     <small>
                       Correct answer: <MathText value={fact.a} />
                     </small>
                   )}
-                  {!result.ok && (
-                    <p>
-                      {decimalSlip(result.raw, fact.a)
-                        ? 'Possible decimal-place slip: check where the decimal belongs.'
-                        : strategyFor({
-                            id: fact.id,
-                            topic: fact.topic,
-                            q: fact.q,
-                            a: fact.a,
-                            correct: false,
-                            ms: result.ms,
-                            at: 0,
-                          }).text}
-                    </p>
-                  )}
+                  <p>
+                    {result.ok
+                      ? 'Next: keep the same accuracy as the questions change.'
+                      : 'Why it matters: this gap can cost accuracy and time under pressure. Next: use this method, then retry the fact: '}
+                    {!result.ok && (
+                      <>
+                        {decimalSlip(result.raw, fact.a)
+                          ? 'Possible decimal-place slip: check where the decimal belongs.'
+                          : strategyFor({
+                              id: fact.id,
+                              topic: fact.topic,
+                              q: fact.q,
+                              a: fact.a,
+                              correct: false,
+                              ms: result.ms,
+                              at: 0,
+                            }).text}
+                      </>
+                    )}
+                  </p>
                 </span>
                 <button
                   onClick={continueNext}
@@ -2127,7 +2136,9 @@ function Summary({
       .map((t) => ({ t, x: tries.filter((a) => a.topic === t) }))
       .filter((x) => x.x.length)
       .sort((a, b) => accuracy(a.x) - accuracy(b.x)),
-    confusion = topConfusion([...prior, ...tries]);
+    confusion = topConfusion([...prior, ...tries]),
+    insight = performanceInsight(tries),
+    weakestTopic = topics[0];
   async function shareReport() {
     const text = [
       'PacePrep Recall Report',
@@ -2159,14 +2170,12 @@ function Summary({
           <Check />
         </i>
         <small>SESSION COMPLETE</small>
-        <h1>
-          {!scored.length
-            ? 'No scored answers yet.'
-            : accuracy(tries) >= 90
-              ? 'Accurate today. Automatic with practice.'
-              : 'A clear next step, not just a score.'}
-        </h1>
-        <p>Each accurate repetition moves a fact closer to instant recall.</p>
+        <h1>{insight.headline}</h1>
+        <p>
+          {weakestTopic && (wrong.length || skipped.length)
+            ? `${TOPICS[weakestTopic.t].name} needs the most attention from this attempt.`
+            : 'Your result now leads directly to the next useful action.'}
+        </p>
         <div className="sumstats">
           <span>
             <small>ANSWERED</small>
@@ -2225,19 +2234,31 @@ function Summary({
             )}
           </div>
         </div>
-        <div className="summary-takeaway">
-          <b>
-            {scored.filter((item) => item.correct).length} correct ·{' '}
-            {scored.filter((item) => !item.correct).length} incorrect ·{' '}
-            {skipped.length} skipped
-          </b>
-          <p>
-            {wrong.length || skipped.length
-              ? 'Your missed facts are ready for a targeted retry. Open the analysis when you want explanations.'
-              : scored.length
-                ? 'No missed answers in this session. Review later to check retention, not just recognition.'
-                : 'Nothing has been scored. Return to the dashboard to choose a drill.'}
-          </p>
+        <div className={`result-action-plan insight-${insight.status}`}>
+          <div className="insight-flow">
+            <article>
+              <small>WHAT HAPPENED</small>
+              <p>{insight.what}</p>
+            </article>
+            <article>
+              <small>WHY IT MATTERS</small>
+              <p>{insight.why}</p>
+            </article>
+            <article>
+              <small>WHAT TO DO NEXT</small>
+              <p>{insight.next}</p>
+            </article>
+          </div>
+          {!!(wrong.length || skipped.length) && (
+            <Button
+              onClick={() =>
+                retry([...wrong, ...skipped].map((item) => item.id))
+              }
+            >
+              <RotateCcw /> Fix {wrong.length + skipped.length} missed{' '}
+              {wrong.length + skipped.length === 1 ? 'question' : 'questions'}
+            </Button>
+          )}
         </div>
         <button
           className="analysis-toggle"
@@ -2246,7 +2267,9 @@ function Summary({
           onClick={() => setDetailed(!detailed)}
         >
           <BarChart3 />
-          {detailed ? 'Hide detailed analysis' : 'View detailed analysis'}
+          {detailed
+            ? 'Hide detailed analysis'
+            : 'View detailed analysis & explanations'}
           <ChevronRight />
         </button>
         <div id="session-analysis" hidden={!detailed}>

@@ -9,11 +9,11 @@ import { InstallButton } from './pwa-provider';
 import { getProgressAccount } from '@/lib/auth-client';
 import { signInHref } from '@/lib/hosting';
 import {
-  BookOpen,
+  BarChart3,
   Check,
   ChevronRight,
   Clock3,
-  Target,
+  ShieldCheck,
   Zap,
 } from 'lucide-react';
 
@@ -121,36 +121,45 @@ export default function LandingGateway() {
 
       <section className="landing-hero">
         <div className="landing-copy">
-          <small>MENTAL MATH TRAINING FOR COMPETITIVE EXAMS</small>
-          <h1>Your next speed gain starts with a baseline.</h1>
+          <small>MENTAL MATH TRAINING FOR BANKING EXAMS</small>
+          <h1>Find where you lose marks. Train it until it feels automatic.</h1>
           <p>
-            Test your recall in 60 seconds. Then train the facts and in-head
-            operations that slow you down—with progress you can measure.
+            PacePrep measures the arithmetic recall behind SBI PO and IBPS PO
+            questions, finds the facts slowing you down, and gives you the
+            shortest useful practice set to fix them.
           </p>
+          <div className="hero-outcome">
+            <ShieldCheck aria-hidden="true" />
+            <span>
+              <b>Protect accuracy. Recover time. Know what to practise next.</b>
+              <small>
+                Each session turns mistakes into a focused follow-up plan.
+              </small>
+            </span>
+          </div>
           <p className="landing-scope">
-            PacePrep is a foundational arithmetic recall engine—not a complete
-            quantitative-aptitude syllabus or a substitute for full mock tests.
+            Use it between mock tests to strengthen foundational arithmetic
+            recall. PacePrep complements a full quantitative-aptitude syllabus.
           </p>
           <ol className="landing-method">
             <li>
               <b>01</b>
-              <span>Measure your starting pace</span>
+              <span>Find the facts costing time or accuracy</span>
             </li>
             <li>
               <b>02</b>
-              <span>Train the facts that need attention</span>
+              <span>Retry only what needs attention</span>
             </li>
             <li>
               <b>03</b>
-              <span>Compare your next attempt</span>
+              <span>Prove the gain in your next attempt</span>
             </li>
           </ol>
           <button
             className="landing-practice-link"
             onClick={() => setEntryIntent('guest')}
           >
-            Already know your level? Go to recall practice{' '}
-            <ChevronRight size={16} />
+            Skip the baseline and start practice <ChevronRight size={16} />
           </button>
           <p>
             <Link href="/practice">Open the practice hub</Link>
@@ -180,37 +189,95 @@ export default function LandingGateway() {
         />
       </section>
 
-      <section className="landing-paths" aria-label="Training paths">
-        <Link href="/practice" className="landing-path-link">
+      <section className="landing-outcomes" aria-labelledby="outcomes-title">
+        <header>
+          <small>WHY REGULAR PRACTICE PAYS OFF</small>
+          <h2 id="outcomes-title">
+            Turn mental maths into dependable exam time
+          </h2>
+          <p>
+            A short session gives you evidence, a focused correction, and a
+            clear reason to return.
+          </p>
+        </header>
+        <div>
           <article>
-            <BookOpen />
+            <ShieldCheck aria-hidden="true" />
             <span>
-              <b>Practice hub</b>
-              <small>Recall facts and in-head operations in one place.</small>
-            </span>
-          </article>
-        </Link>
-        <Link href="/ops" className="landing-path-link">
-          <article>
-            <Target />
-            <span>
-              <b>Train operations</b>
+              <b>Lose fewer marks to avoidable errors</b>
               <small>
-                Addition, subtraction, multiplication, and division without
+                See incorrect and skipped patterns before they repeat in a timed
                 paper.
               </small>
             </span>
           </article>
-        </Link>
-        <article>
-          <Clock3 />
-          <span>
-            <b>Build exam pace</b>
-            <small>
-              Compare recorded accuracy and pace across your practice.
-            </small>
-          </span>
-        </article>
+          <article>
+            <Clock3 aria-hidden="true" />
+            <span>
+              <b>Keep more time for reasoning</b>
+              <small>
+                Faster recall means less working time spent reconstructing basic
+                arithmetic.
+              </small>
+            </span>
+          </article>
+          <article>
+            <BarChart3 aria-hidden="true" />
+            <span>
+              <b>Know whether practice is working</b>
+              <small>
+                Compare matching attempts and separate real improvement from a
+                one-off fast score.
+              </small>
+            </span>
+          </article>
+        </div>
+      </section>
+
+      <section className="landing-loop" aria-labelledby="loop-title">
+        <div>
+          <small>YOUR IMPROVEMENT LOOP</small>
+          <h2 id="loop-title">Every attempt ends with a next move</h2>
+          <p>
+            You never have to decide what a score means on your own. PacePrep
+            turns each result into the next focused action.
+          </p>
+          <Link href="/practice">
+            Explore practice options <ChevronRight size={17} />
+          </Link>
+        </div>
+        <ol>
+          <li>
+            <b>1</b>
+            <span>
+              Attempt<small>Answer a short, focused set</small>
+            </span>
+          </li>
+          <li>
+            <b>2</b>
+            <span>
+              Analyse<small>See accuracy, pace, and skips</small>
+            </span>
+          </li>
+          <li>
+            <b>3</b>
+            <span>
+              Identify<small>Find the pattern costing marks</small>
+            </span>
+          </li>
+          <li>
+            <b>4</b>
+            <span>
+              Act<small>Retry the exact weak questions</small>
+            </span>
+          </li>
+          <li>
+            <b>5</b>
+            <span>
+              Improve<small>Compare, retain, and repeat</small>
+            </span>
+          </li>
+        </ol>
       </section>
 
       <footer className="landing-footer">

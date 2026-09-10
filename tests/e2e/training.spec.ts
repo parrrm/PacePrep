@@ -4,6 +4,26 @@ import AxeBuilder from '@axe-core/playwright';
 const saved = (page: Page, key = 'paceprep-grok-test') =>
   page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), key);
 
+test('landing explains the exam outcome and the complete improvement loop', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', { name: /Find where you lose marks/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Protect accuracy. Recover time. Know what to practise next.',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Every attempt ends with a next move' }),
+  ).toBeVisible();
+  await expect(page.locator('.landing-loop li')).toHaveCount(5);
+  await expect(page.locator('.landing-loop')).toContainText('Attempt');
+  await expect(page.locator('.landing-loop')).toContainText('Improve');
+});
+
 test('untimed feedback stays until Continue and a one-fact retry stays focused', async ({
   page,
 }) => {
@@ -15,10 +35,21 @@ test('untimed feedback stays until Continue and a one-fact retry stays focused',
   await page.getByRole('textbox', { name: 'Your answer' }).fill('0');
   await page.getByRole('button', { name: 'Check answer', exact: true }).click();
   await expect(page.locator('.feedback.no')).toBeVisible();
+  await expect(page.locator('.feedback.no')).toContainText('Why it matters');
+  await expect(page.locator('.feedback.no')).toContainText('Next:');
   await page.clock.fastForward(15_000);
   await expect(page.locator('.feedback.no')).toBeVisible();
   await expect(page.locator('.qcard h1')).toHaveText(question);
   await page.getByRole('button', { name: 'End session', exact: true }).click();
+  await expect(page.locator('.result-action-plan')).toContainText(
+    'WHAT HAPPENED',
+  );
+  await expect(page.locator('.result-action-plan')).toContainText(
+    'WHY IT MATTERS',
+  );
+  await expect(page.locator('.result-action-plan')).toContainText(
+    'WHAT TO DO NEXT',
+  );
   await page.getByRole('button', { name: 'View detailed analysis' }).click();
   await page.getByRole('button', { name: 'Retry missed questions' }).click();
   await expect(page.locator('.practiceHead')).toContainText('Question 1 of 1');

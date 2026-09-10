@@ -27,11 +27,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(origin),
   title: {
-    default: 'PacePrep — Mental Math Recall Training for Banking Exams',
+    default: 'PacePrep — Find and Fix Weak Mental Maths for Banking Exams',
     template: '%s · PacePrep',
   },
   description:
-    'Build instant, accurate recall for SBI PO and IBPS PO fractions, tables, squares, cubes, and mental multiplication with adaptive practice.',
+    'Find the mental-math facts costing marks and time in SBI PO and IBPS PO exams, then fix them with focused practice and measurable progress.',
   keywords: [
     'mental math practice',
     'SBI PO quantitative aptitude',
@@ -44,9 +44,9 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: 'PacePrep', statusBarStyle: 'default' },
   icons: { icon: '/icons/app.svg', apple: '/icons/apple-touch-icon.png' },
   openGraph: {
-    title: 'PacePrep — Mental Math Recall Training for Banking Exams',
+    title: 'PacePrep — Know What Is Costing You Marks',
     description:
-      'Build instant, accurate recall for SBI PO and IBPS PO quantitative aptitude.',
+      'Identify weak mental maths, protect accuracy, and recover time for SBI PO and IBPS PO quantitative aptitude.',
     siteName: 'PacePrep',
     type: 'website',
     images: [
@@ -60,9 +60,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'PacePrep — Mental Math Recall Training for Banking Exams',
+    title: 'PacePrep — Know What Is Costing You Marks',
     description:
-      'Adaptive recall practice for faster, more accurate banking-exam calculations.',
+      'Focused mental-math practice that shows what is holding you back and what to improve next.',
     images: ['/paceprep-social.png'],
   },
 };
@@ -74,7 +74,7 @@ const structuredData = {
   applicationCategory: 'EducationalApplication',
   operatingSystem: 'Web',
   description:
-    'Adaptive mental math recall training for SBI PO and IBPS PO quantitative aptitude.',
+    'Identifies weak mental-math recall, gives focused corrective practice, and measures accuracy and pace for SBI PO and IBPS PO preparation.',
   audience: { '@type': 'Audience', suggestedMinAge: 18 },
 };
 
@@ -95,11 +95,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <a className="skip-link" href="#main-content">
+          Skip to main content
+        </a>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-        <PwaProvider>{children}</PwaProvider>
+        <div id="main-content" className="content-root" tabIndex={-1}>
+          <PwaProvider>{children}</PwaProvider>
+        </div>
       </body>
     </html>
   );
