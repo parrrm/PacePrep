@@ -4,6 +4,34 @@ import AxeBuilder from '@axe-core/playwright';
 const saved = (page: Page, key = 'paceprep-grok-test') =>
   page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), key);
 
+test('unseen operations check defers coaching and preserves an exact retry', async ({
+  page,
+}) => {
+  await page.goto('/ops?family=addition');
+  await page.getByRole('button', { name: /Check my progress/ }).click();
+  const question = await page.locator('.qcard h1').innerText();
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('0');
+  await page.getByRole('button', { name: 'Check answer', exact: true }).click();
+  await expect(page.locator('.feedback')).toContainText('Answer recorded');
+  await expect(page.locator('.feedback')).not.toContainText('correct answer');
+  await page.getByRole('button', { name: 'End session', exact: true }).click();
+  await expect(page.getByText(/Unseen-question check/)).toBeVisible();
+  const first = (await saved(page, 'paceprep-progress')).history[0];
+  expect(first.sessionId).toMatch(/^ops-benchmark-/);
+  expect(Number(first.id.split('-').at(-1)) % 5).toBe(4);
+  await page
+    .getByRole('button', { name: 'Retry missed questions', exact: true })
+    .click();
+  await expect(page.locator('.qcard h1')).toHaveText(question);
+  await page.getByRole('textbox', { name: 'Your answer' }).fill(first.a);
+  await page.getByRole('button', { name: 'Check answer', exact: true }).click();
+  await expect(page.locator('.feedback')).toContainText(
+    'What happened: Correct',
+  );
+  await page.getByRole('button', { name: 'View results', exact: true }).click();
+  expect((await saved(page, 'paceprep-progress')).history).toHaveLength(2);
+});
+
 test('landing makes a two-minute exam-improvement loop immediately clear', async ({
   page,
 }) => {

@@ -1,4 +1,6 @@
-/** Closed mental-operation banks. IDs are stable so Leitner stats persist. */
+import { GENERATED_OPERATIONS } from './operation-generator.ts';
+
+/** Legacy IDs remain available so saved progress and exact retries persist. */
 
 export type OpTopic =
   | 'addition'
@@ -95,23 +97,76 @@ export function buildOperationBank(): OpFact[] {
   }
 
   const noCarry: Array<[number, number]> = [
-    [21, 34], [42, 35], [50, 29], [63, 14], [31, 42], [12, 45], [70, 18], [22, 33],
-    [41, 26], [15, 23], [54, 22], [80, 13], [36, 21], [44, 15], [61, 27], [13, 54],
+    [21, 34],
+    [42, 35],
+    [50, 29],
+    [63, 14],
+    [31, 42],
+    [12, 45],
+    [70, 18],
+    [22, 33],
+    [41, 26],
+    [15, 23],
+    [54, 22],
+    [80, 13],
+    [36, 21],
+    [44, 15],
+    [61, 27],
+    [13, 54],
   ];
   noCarry.forEach(([a, b]) =>
-    push(fact('addition', '2-digit + 2-digit, no carry', `add-nc-${a}-${b}`, `${a} + ${b} = ?`, a + b, leftToRightAdd(a, b))),
+    push(
+      fact(
+        'addition',
+        '2-digit + 2-digit, no carry',
+        `add-nc-${a}-${b}`,
+        `${a} + ${b} = ?`,
+        a + b,
+        leftToRightAdd(a, b),
+      ),
+    ),
   );
 
   const carry: Array<[number, number]> = [
-    [28, 47], [39, 16], [57, 28], [68, 27], [19, 46], [35, 47], [48, 36], [29, 58],
-    [17, 25], [58, 36], [49, 27], [67, 18], [38, 29], [46, 19], [24, 39], [56, 27],
+    [28, 47],
+    [39, 16],
+    [57, 28],
+    [68, 27],
+    [19, 46],
+    [35, 47],
+    [48, 36],
+    [29, 58],
+    [17, 25],
+    [58, 36],
+    [49, 27],
+    [67, 18],
+    [38, 29],
+    [46, 19],
+    [24, 39],
+    [56, 27],
   ];
   carry.forEach(([a, b]) =>
-    push(fact('addition', '2-digit + 2-digit, carry', `add-cy-${a}-${b}`, `${a} + ${b} = ?`, a + b, leftToRightAdd(a, b))),
+    push(
+      fact(
+        'addition',
+        '2-digit + 2-digit, carry',
+        `add-cy-${a}-${b}`,
+        `${a} + ${b} = ?`,
+        a + b,
+        leftToRightAdd(a, b),
+      ),
+    ),
   );
 
   const near: Array<[number, number]> = [
-    [99, 16], [98, 27], [97, 18], [96, 34], [95, 28], [89, 15], [88, 26], [79, 14],
+    [99, 16],
+    [98, 27],
+    [97, 18],
+    [96, 34],
+    [95, 28],
+    [89, 15],
+    [88, 26],
+    [79, 14],
   ];
   near.forEach(([a, b]) =>
     push(
@@ -127,7 +182,14 @@ export function buildOperationBank(): OpFact[] {
   );
 
   const triples: Array<[number, number, number]> = [
-    [6, 8, 4], [7, 5, 9], [3, 8, 7], [9, 6, 5], [4, 7, 9], [8, 8, 6], [5, 9, 8], [2, 9, 7],
+    [6, 8, 4],
+    [7, 5, 9],
+    [3, 8, 7],
+    [9, 6, 5],
+    [4, 7, 9],
+    [8, 8, 6],
+    [5, 9, 8],
+    [2, 9, 7],
   ];
   triples.forEach(([a, b, c]) =>
     push(
@@ -143,16 +205,44 @@ export function buildOperationBank(): OpFact[] {
   );
 
   for (let a = 1; a <= 9; a++) {
-    push(fact('subtraction', 'Complements to 10', `sub-c10-10-${a}`, `10 − ${a} = ?`, 10 - a, `${a} and ${10 - a} make 10.`));
+    push(
+      fact(
+        'subtraction',
+        'Complements to 10',
+        `sub-c10-10-${a}`,
+        `10 − ${a} = ?`,
+        10 - a,
+        `${a} and ${10 - a} make 10.`,
+      ),
+    );
   }
 
   for (let a = 15; a <= 85; a += 10) {
-    push(fact('subtraction', 'Subtract from 100', `sub-100-${a}`, `100 − ${a} = ?`, 100 - a, `100 − ${a} = ${100 - a}.`));
+    push(
+      fact(
+        'subtraction',
+        'Subtract from 100',
+        `sub-100-${a}`,
+        `100 − ${a} = ?`,
+        100 - a,
+        `100 − ${a} = ${100 - a}.`,
+      ),
+    );
   }
 
   const subNoBorrow: Array<[number, number]> = [
-    [48, 23], [67, 31], [59, 14], [86, 42], [75, 20], [38, 15], [94, 51], [66, 32],
-    [47, 16], [89, 40], [55, 12], [73, 41],
+    [48, 23],
+    [67, 31],
+    [59, 14],
+    [86, 42],
+    [75, 20],
+    [38, 15],
+    [94, 51],
+    [66, 32],
+    [47, 16],
+    [89, 40],
+    [55, 12],
+    [73, 41],
   ];
   subNoBorrow.forEach(([a, b]) =>
     push(
@@ -168,18 +258,53 @@ export function buildOperationBank(): OpFact[] {
   );
 
   const subBorrow: Array<[number, number]> = [
-    [52, 28], [71, 36], [40, 17], [63, 29], [81, 47], [90, 38], [54, 19], [72, 45],
-    [31, 18], [60, 24], [83, 57], [44, 26],
+    [52, 28],
+    [71, 36],
+    [40, 17],
+    [63, 29],
+    [81, 47],
+    [90, 38],
+    [54, 19],
+    [72, 45],
+    [31, 18],
+    [60, 24],
+    [83, 57],
+    [44, 26],
   ];
   subBorrow.forEach(([a, b]) =>
-    push(fact('subtraction', '2-digit − 2-digit, borrow', `sub-br-${a}-${b}`, `${a} − ${b} = ?`, a - b, compensationSub(a, b))),
+    push(
+      fact(
+        'subtraction',
+        '2-digit − 2-digit, borrow',
+        `sub-br-${a}-${b}`,
+        `${a} − ${b} = ?`,
+        a - b,
+        compensationSub(a, b),
+      ),
+    ),
   );
 
   const subComp: Array<[number, number]> = [
-    [93, 48], [81, 39], [74, 28], [62, 19], [85, 47], [70, 38], [91, 26], [64, 29],
+    [93, 48],
+    [81, 39],
+    [74, 28],
+    [62, 19],
+    [85, 47],
+    [70, 38],
+    [91, 26],
+    [64, 29],
   ];
   subComp.forEach(([a, b]) =>
-    push(fact('subtraction', 'Compensation subtraction', `sub-comp-${a}-${b}`, `${a} − ${b} = ?`, a - b, compensationSub(a, b))),
+    push(
+      fact(
+        'subtraction',
+        'Compensation subtraction',
+        `sub-comp-${a}-${b}`,
+        `${a} − ${b} = ?`,
+        a - b,
+        compensationSub(a, b),
+      ),
+    ),
   );
 
   const mulShortcuts: Array<[number, number, string]> = [
@@ -223,7 +348,13 @@ export function buildOperationBank(): OpFact[] {
     push(
       fact(
         'multiplication',
-        b === 11 ? '×11' : b === 25 || b === 50 ? '×25 and ×50' : a >= 96 ? 'Near 100' : 'Split and double',
+        b === 11
+          ? '×11'
+          : b === 25 || b === 50
+            ? '×25 and ×50'
+            : a >= 96
+              ? 'Near 100'
+              : 'Split and double',
         `mul-${a}-${b}`,
         `${a} × ${b} = ?`,
         a * b,
@@ -268,7 +399,13 @@ export function buildOperationBank(): OpFact[] {
     push(
       fact(
         'division',
-        b === 25 ? '÷25' : b === 5 ? '÷5' : b === 4 || b === 8 ? 'Halving' : 'Exact short division',
+        b === 25
+          ? '÷25'
+          : b === 5
+            ? '÷5'
+            : b === 4 || b === 8
+              ? 'Halving'
+              : 'Exact short division',
         `div-${a}-${b}`,
         `${a} ÷ ${b} = ?`,
         a / b,
@@ -280,7 +417,14 @@ export function buildOperationBank(): OpFact[] {
   return items;
 }
 
-export const OPERATION_FACTS = buildOperationBank();
+export const LEGACY_OPERATION_FACTS = buildOperationBank();
+const legacyPrompts = new Set(LEGACY_OPERATION_FACTS.map((item) => item.q));
+export const OPERATION_FACTS = [
+  ...LEGACY_OPERATION_FACTS,
+  ...GENERATED_OPERATIONS.filter(
+    (item) => item.partition === 'practice' && !legacyPrompts.has(item.q),
+  ),
+];
 
 export const OPERATION_TARGETS: Record<OpTopic, number> = {
   addition: 5500,

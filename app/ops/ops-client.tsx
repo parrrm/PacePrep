@@ -21,7 +21,19 @@ import {
   PRACTICE_HUB_COPY,
   type OperationFamilyId,
 } from '@/lib/practice-families';
-import { operationsByTopic, type OpFact } from '@/lib/mental-ops';
+import {
+  operationsByTopic,
+  OPERATION_TARGETS,
+  type OpFact,
+} from '@/lib/mental-ops';
+import {
+  diagnoseOperation,
+  operationPracticeDeck,
+  operationBenchmark,
+  skillStage,
+} from '@/lib/operation-learning';
+import { GENERATED_OPERATIONS } from '@/lib/operation-generator';
+import type { ProgressAttempt } from '@/lib/learning-progress';
 import {
   completeOperationSession,
   recordOperationAttempt,
@@ -56,6 +68,8 @@ export default function OpsPage() {
   const [family, setFamily] = useState<OperationFamilyId | null>(null);
   const [limit, setLimit] = useState(10);
   const [sprint, setSprint] = useState(false);
+  const [benchmark, setBenchmark] = useState(false);
+  const [learningHistory, setLearningHistory] = useState<ProgressAttempt[]>([]);
   const [deck, setDeck] = useState<OpFact[]>([]);
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState('');
@@ -83,6 +97,7 @@ export default function OpsPage() {
       .then((account) => {
         if (!active) return;
         progress.current = account;
+        setLearningHistory(account.snapshot().history ?? []);
         if (category && Object.hasOwn(OPERATION_FAMILIES, category))
           setFamily(category as OperationFamilyId);
         setCanStart(true);
@@ -151,7 +166,10 @@ export default function OpsPage() {
 
   const fact = deck[index];
 
-  function begin(next: OperationFamilyId, mode: 'ten' | 'sprint' | 'retry') {
+  function begin(
+    next: OperationFamilyId,
+    mode: 'ten' | 'sprint' | 'retry' | 'benchmark',
+  ) {
     if (!progress.current) return;
     try {
       sessionStorage.setItem('paceprep-entered', '1');
@@ -162,26 +180,55 @@ export default function OpsPage() {
       log.filter((item) => !item.correct).map((item) => item.id),
     );
     let pool: OpFact[];
+    const seed = crypto.randomUUID();
     try {
-      pool = adaptiveDeck(
-        operationsByTopic(next).filter(
-          (item) => mode !== 'retry' || retryIds.has(item.id),
-        ),
-        progress.current.snapshot().stats ?? {},
-      );
+      const snapshot = progress.current.snapshot();
+      pool =
+        mode === 'retry'
+          ? adaptiveDeck(
+              [
+                ...operationsByTopic(next),
+                ...GENERATED_OPERATIONS.filter(
+                  (item) =>
+                    item.topic === next && item.partition === 'benchmark',
+                ),
+              ].filter((item) => retryIds.has(item.id)),
+              snapshot.stats ?? {},
+            )
+          : mode === 'benchmark'
+            ? operationBenchmark(
+                next,
+                snapshot.history ?? [],
+                seed,
+                10,
+                snapshot.stats,
+              )
+            : operationPracticeDeck(
+                next,
+                snapshot.history ?? [],
+                snapshot.stats ?? {},
+                seed,
+              );
     } catch {
       setSaveError(
         'Your progress could not be read. Reload before starting another session.',
       );
       return;
     }
-    if (!pool.length) return;
-    sessionId.current = `ops-${crypto.randomUUID()}`;
+    if (!pool.length) {
+      setSaveError(
+        'You have seen all available benchmark variants in your saved history. Continue practice while more checks are prepared.',
+      );
+      return;
+    }
+    setSaveError('');
+    sessionId.current = `ops-${mode}-${seed}`;
     counted.current = false;
     locked.current = false;
     attemptCount.current = 0;
     setFamily(next);
     setSprint(mode === 'sprint');
+    setBenchmark(mode === 'benchmark');
     const size = mode === 'retry' ? pool.length : Math.min(10, pool.length);
     setLimit(mode === 'sprint' ? 0 : size);
     setDeck(mode === 'sprint' ? pool : pool.slice(0, size));
@@ -218,6 +265,7 @@ export default function OpsPage() {
         { ...item, topic: family!, sessionId: sessionId.current },
         progress.current,
       );
+      setLearningHistory(progress.current.snapshot().history ?? []);
     } catch {
       setSaveError(
         'This answer could not be saved. Your session review is still available below.',
@@ -276,7 +324,15 @@ export default function OpsPage() {
     [log],
   );
   const missedCount = log.filter((item) => !item.correct).length;
-  const insight = performanceInsight(log);
+  const paceTarget = family ? OPERATION_TARGETS[family] : 7000;
+  const insight = performanceInsight(log, paceTarget);
+  const diagnosis = result ? diagnoseOperation(result.id, result.raw) : null;
+  const representative = GENERATED_OPERATIONS.find(
+    (item) => item.topic === family,
+  );
+  const learning = representative
+    ? skillStage(learningHistory, representative)
+    : null;
 
   if (stage === 'done') {
     return (
@@ -287,6 +343,12 @@ export default function OpsPage() {
             <span>
               <small>MENTAL OPERATIONS</small>
               <h1>Session review</h1>
+              {benchmark && (
+                <p>
+                  Unseen-question check · {log.length} of {limit} completed.
+                  This measures arithmetic practice, not an exam score.
+                </p>
+              )}
               <p>
                 {scored.length} answered ·{' '}
                 {scored.length
@@ -297,6 +359,15 @@ export default function OpsPage() {
           </div>
           {status}
           <section className="panel operation-empty">
+            {learning && (
+              <p>
+                Skill focus: {learning.stage} · {learning.evidence.answered}{' '}
+                recent typed answers ·{' '}
+                {learning.evidence.confidence === 'early'
+                  ? 'Early evidence; keep practising varied questions.'
+                  : 'Evidence across varied questions.'}
+              </p>
+            )}
             <div
               className="operation-result-scan"
               aria-label="Session highlights"
@@ -343,7 +414,10 @@ export default function OpsPage() {
                       <b>
                         {item.q} {item.a}
                       </b>
-                      <span>{item.strategy}</span>
+                      <span>
+                        {diagnoseOperation(item.id, item.raw)?.advice ??
+                          item.strategy}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -477,6 +551,20 @@ export default function OpsPage() {
             </button>
             <button
               disabled={loading || !canStart}
+              onClick={() => begin(family, 'benchmark')}
+            >
+              <i className={meta.color}>
+                <Target />
+              </i>
+              <span>
+                <small>UNSEEN QUESTIONS</small>
+                <b>Check my progress</b>
+                <em>Up to 10 new variants. Explanations appear at the end.</em>
+              </span>
+              <ChevronRight />
+            </button>
+            <button
+              disabled={loading || !canStart}
               onClick={() => begin(family, 'sprint')}
             >
               <i className={meta.color}>
@@ -532,15 +620,17 @@ export default function OpsPage() {
         <div className="quizline">
           <small>{meta.title}</small>
           <b className="session-score">
-            <Check size={15} /> {log.filter((item) => item.correct).length}{' '}
-            correct
+            <Check size={15} />{' '}
+            {benchmark
+              ? `${log.length} recorded`
+              : `${log.filter((item) => item.correct).length} correct`}
           </b>
           <span>
             <Target size={14} /> Type
           </span>
         </div>
         <div
-          className={`qcard ${result ? (result.correct ? 'answer-correct' : 'answer-review-needed') : ''}`}
+          className={`qcard ${result && !benchmark ? (result.correct ? 'answer-correct' : 'answer-review-needed') : ''}`}
         >
           <small>MENTAL OPERATION</small>
           <h1>{fact.q}</h1>
@@ -589,29 +679,36 @@ export default function OpsPage() {
             </div>
           </form>
           <output
-            className={`feedback ${result ? (result.correct ? 'yes' : 'no') : ''}`}
+            className={`feedback ${result ? (benchmark || result.correct ? 'yes' : 'no') : ''}`}
             aria-live="polite"
           >
             {result && (
               <>
-                <i>{result.correct ? <Check /> : <RotateCcw />}</i>
+                <i>{benchmark || result.correct ? <Check /> : <RotateCcw />}</i>
                 <span>
-                  <b>
-                    {result.correct
-                      ? `What happened: Correct · ${(result.ms / 1000).toFixed(2)}s`
-                      : `What happened: Not yet · correct answer ${result.a}`}
-                  </b>
-                  <small>
-                    Why it matters:{' '}
-                    {result.correct
-                      ? 'Reliable calculation leaves more time for harder exam steps.'
-                      : 'This hesitation can cost a mark or slow the next step.'}
-                  </small>
-                  <p>
-                    {result.correct
-                      ? 'Next: keep this accuracy as the numbers change.'
-                      : `Next: ${result.strategy}`}
-                  </p>
+                  {benchmark ? (
+                    <b>Answer recorded. Continue to finish your check.</b>
+                  ) : (
+                    <>
+                      <b>
+                        {result.correct
+                          ? `What happened: Correct · ${(result.ms / 1000).toFixed(2)}s`
+                          : `What happened: Not yet · correct answer ${result.a}`}
+                      </b>
+                      <small>
+                        Why it matters:{' '}
+                        {result.correct
+                          ? 'Reliable calculation leaves more time for harder exam steps.'
+                          : (diagnosis?.pattern ??
+                            'This error can cost a mark or slow the next step.')}
+                      </small>
+                      <p>
+                        {result.correct
+                          ? 'Next: keep this accuracy as the numbers change.'
+                          : `Next: ${diagnosis?.advice ?? result.strategy}`}
+                      </p>
+                    </>
+                  )}
                 </span>
                 <button type="button" onClick={goNext}>
                   {index + 1 >= deck.length ? 'View results' : 'Next'}

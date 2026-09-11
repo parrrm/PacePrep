@@ -1,4 +1,24 @@
-# PacePrep mobile-first outcomes validation — 11 September 2026
+# PacePrep engine validation — 11 September 2026
+
+Engine checkpoint based on `59d22d6`. All five mechanisms are implemented for mental operations: versioned generation, skill evidence, candidate mistake diagnosis, evidence-gated progression and reserved benchmarks. Recall keeps its existing bank and scheduler. No dependency, storage schema, authentication configuration or deployed service changed.
+
+| Current engine check | Actual result |
+| --- | --- |
+| TypeScript and full lint | Passed |
+| Unit/integration suite | 81 passed, zero failures/skips |
+| Vercel build/output verification | Passed; 54 public assets |
+| Vercel desktop/phone E2E | 34 passed, 2 intentional Sites-only skips |
+| Sites build | Passed |
+| Sites desktop/phone/D1 E2E | Final source: 39 passed, zero skips, 1.4m |
+| Local mobile Lighthouse | Home 75/100/100/100, LCP 4.85s, CLS 0.000075, TBT 18.5ms; practice 76/100/100/100, LCP 4.66s, CLS 0, TBT 12ms |
+
+Seven new engine tests verify all 720 variants' arithmetic and identities; combined-bank prompt uniqueness; deterministic selection; practice/benchmark isolation; typed evidence diversity; conservative error candidates; difficulty promotion/demotion and due-item priority; and benchmark exposure exclusion even after history compaction. Fifteen overlaps with legacy questions are excluded from generated practice, leaving 750 unique active practice prompts. The browser regression runs on desktop and phone and verifies deferred correctness, persisted benchmark identity and exact-question retry. Existing accessibility and storage-isolation checks remain enabled.
+
+The initial Sites run reported only timeout errors in phone public-accessibility and landing scenarios and took 17 minutes. An unchanged full rerun passed 39 tests in 1.4m. After the final prompt-deduplication correction, all gates were rerun and passed on the final source. No timeout was increased and no assertion was disabled. Current engine validation is not a production performance measurement, empirical difficulty calibration, exam-score prediction or live cloud authentication verification. The benchmark supply is finite and the UI reports exhaustion; difficulty and pace targets are authored heuristics. Skill evidence uses retained history and may return to “early” after old history is compacted; persistent statistics still prevent benchmark reuse.
+
+The following is the historical checkpoint 7 validation record. Its counts and measurements are preserved for comparison; use the current engine table above for this change.
+
+## Mobile-first outcomes validation — checkpoint 7
 
 Source work based on `8fa2bd9`: checkpoints `cdbcfbe`, `96c9700`, `0c15b87`, `bb91ef7`, `282c1f3`, `7decdd6` and the mobile-first checkpoint containing this record. The short landing, direct two-minute start, dashboard, feedback and results now form one Practice → Analyse → Improve → Repeat loop. No production release or live database migration was performed.
 
