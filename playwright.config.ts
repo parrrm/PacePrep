@@ -49,7 +49,7 @@ export default defineConfig({
   webServer: {
     command: sites
       ? 'node scripts/e2e-sites-server.mjs'
-      : 'PACEPREP_PLATFORM=vercel NITRO_PRESET=vercel pnpm exec vite preview --host localhost --port 4173 --strictPort',
+      : 'node scripts/preview-vercel.mjs',
     url: baseURL,
     reuseExistingServer: false,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },

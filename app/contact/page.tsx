@@ -7,24 +7,34 @@ export default function ContactPage() {
   return (
     <InfoShell
       eyebrow="CONTACT"
-      title="Support channel pending launch details"
-      intro="A working domain-based support and grievance address is required before PacePrep moves from testing preview to production."
+      title="Contact PacePrep Team"
+      intro="Found a confusing question or something that does not work? Help us improve PacePrep’s free public beta."
     >
       <section className="info-notice">
-        <h2>Product-owner action required</h2>
+        <h2>Report a problem or suggest an improvement</h2>
         <p>
-          Provide the owned PacePrep domain and monitored support/grievance
-          email. It will be published here, in the footer, sign-in notice,
-          Privacy Policy, and Terms of Service.
+          <a href="https://github.com/parrrm/PacePrep/issues">
+            Open the PacePrep support tracker
+          </a>
+          . A GitHub account is needed to post. Include the question, expected
+          answer, device and what happened. Reports are public: do not include
+          passwords, email addresses or private learner information.
         </p>
       </section>
       <section>
-        <h2>Account deletion</h2>
+        <h2>Your practice data</h2>
         <p>
-          Signed-in learners can already delete their progress without
-          contacting support: open the profile panel and select “Delete
-          progress.” Guest learners can clear this site&apos;s local data in
-          their browser.
+          Guest progress stays on your device. Open the profile panel and select
+          “Delete progress,” or clear this site&apos;s data in your browser.
+          Cloud accounts are not enabled for this Vercel beta.
+        </p>
+      </section>
+      <section>
+        <h2>Private enquiries</h2>
+        <p>
+          A private support mailbox has not been established yet. Please do not
+          post private enquiries in the public tracker. PacePrep Team is the
+          project’s public-facing name, not a registered-business claim.
         </p>
       </section>
     </InfoShell>

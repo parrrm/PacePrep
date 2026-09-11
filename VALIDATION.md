@@ -1,5 +1,9 @@
 # PacePrep engine validation — 11 September 2026
 
+## Release checkpoint correction
+
+Remote clean-build CI for `6ac527c` exposed that `vite preview` expected a missing `dist/server/index.js`; local stale artifacts could satisfy it. Historical local Vercel E2E/Lighthouse results below do not prove exact-artifact validation. Release checkpoint 9 replaces the preview server with `scripts/preview-vercel.mjs`, which serves `.vercel/output/static` and invokes the generated Vercel function. The first corrected run passed 34 browser tests with 2 intentional Sites-only skips. Full checks and remote CI for the final release edits are pending; see TASK_PROGRESS.md before promotion.
+
 Engine checkpoint based on `59d22d6`. All five mechanisms are implemented for mental operations: versioned generation, skill evidence, candidate mistake diagnosis, evidence-gated progression and reserved benchmarks. Recall keeps its existing bank and scheduler. No dependency, storage schema, authentication configuration or deployed service changed.
 
 | Current engine check | Actual result |

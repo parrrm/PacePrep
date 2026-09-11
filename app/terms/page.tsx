@@ -7,8 +7,8 @@ export default function TermsPage() {
   return (
     <InfoShell
       eyebrow="TERMS"
-      title="Testing-preview terms"
-      intro="These plain-language terms cover the current PacePrep preview. Final operator identity and governing-law details are required before production launch."
+      title="Public beta terms"
+      intro="These plain-language terms describe PacePrep Team’s free public beta for adult learners."
     >
       <section>
         <h2>Eligibility</h2>
@@ -36,9 +36,9 @@ export default function TermsPage() {
       <section>
         <h2>Availability and changes</h2>
         <p>
-          The preview may change, pause, or lose data while testing. We will
-          disclose production pricing and final policies before enabling payment
-          or presenting the service as generally available.
+          The beta may change or pause, and device-local progress can be lost if
+          browser storage is cleared. We will disclose pricing and updated
+          policies before enabling any payment.
         </p>
       </section>
       <section>
@@ -49,10 +49,12 @@ export default function TermsPage() {
         </p>
       </section>
       <section className="info-notice">
-        <h2>Pre-launch requirement</h2>
+        <h2>Support and beta limits</h2>
         <p>
-          Final terms require the operator&apos;s legal name, address/state,
-          grievance channel, and approved governing-law and dispute language.
+          Visit <a href="/contact">Contact PacePrep Team</a> for public bug
+          reports and feature suggestions. Cloud accounts and payments are not
+          part of this Vercel beta. Legal operator details, private support and
+          final policies remain required for a broader account-enabled launch.
         </p>
       </section>
     </InfoShell>

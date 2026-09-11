@@ -27,6 +27,12 @@ uses localhost:4173; Sites uses localhost:8787. Tests fail if the port is alread
 occupied, rather than silently testing an unrelated or stale server. Do not run
 these against production accounts or a shared personal browser profile.
 
+The Vercel test and audit server is `node scripts/preview-vercel.mjs`. It serves
+the generated `.vercel/output/static` files and invokes the generated Vercel
+function directly. Do not use `vite preview`: that can look for an unrelated
+`dist/server/index.js` and falsely test stale artifacts. This local bridge does
+not emulate the Vercel edge/CDN or establish deployed authentication.
+
 The suite uses a fresh browser context for each test at desktop (1440px) and
 phone (390px) sizes. It exercises baseline consent/save/reload, settings focus,
 recall category selection and timer cleanup, operation grading and duplicate

@@ -49,23 +49,11 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
     process.exitCode = 1;
   });
 }
-const server = run(
-  [
-    'exec',
-    'vite',
-    'preview',
-    '--host',
-    'localhost',
-    '--port',
-    '4173',
-    '--strictPort',
-  ],
-  {
-    PACEPREP_PLATFORM: 'vercel',
-    NITRO_PRESET: 'vercel',
-    NEXT_PUBLIC_CLOUD_AUTH_READY: 'false',
-  },
-);
+const server = run(['exec', 'node', 'scripts/preview-vercel.mjs'], {
+  PACEPREP_PLATFORM: 'vercel',
+  NITRO_PRESET: 'vercel',
+  NEXT_PUBLIC_CLOUD_AUTH_READY: 'false',
+});
 try {
   let ready = false;
   for (let attempt = 0; attempt < 120; attempt++) {

@@ -23,7 +23,7 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 async function enterGuest(page: Page, path = '/?practice=tables') {
-  await page.goto(path);
+  await page.goto(path, { waitUntil: 'domcontentloaded' });
   await page.getByRole('checkbox').check();
   await page
     .getByRole('button', { name: 'Continue as guest', exact: true })

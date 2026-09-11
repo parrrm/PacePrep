@@ -7,24 +7,23 @@ export default function PricingPage() {
   return (
     <InfoShell
       eyebrow="PRICING"
-      title="Free during the testing preview"
-      intro="There is no paid tier, payment collection, advertising, or real-money reward mechanic in the current PacePrep preview."
+      title="Free public beta"
+      intro="Practise for free. No payment details, advertising or real-money rewards."
     >
       <section>
         <h2>Included today</h2>
         <ul>
           <li>All current fact banks and practice modes</li>
           <li>Guest practice stored on one device</li>
-          <li>Progress sync when cloud accounts are available</li>
+          <li>Cloud sync is not enabled in the Vercel beta</li>
           <li>Fact-level mastery, reviews, and session comparisons</li>
         </ul>
       </section>
       <section className="info-notice">
-        <h2>Production pricing is not yet set</h2>
+        <h2>No payment required</h2>
         <p>
-          We will publish a clear free-versus-paid feature table before any
-          production launch or billing. The current preview has no payment
-          requirement.
+          All currently available practice is free. If paid features are added
+          later, their price and scope will be published before any purchase.
         </p>
       </section>
     </InfoShell>

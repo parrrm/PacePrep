@@ -8,8 +8,8 @@ export default function PrivacyPage() {
   return (
     <InfoShell
       eyebrow="PRIVACY"
-      title="Preview privacy notice"
-      intro="This notice describes the data behaviour implemented in the current PacePrep testing preview. Operator and grievance-contact details must be added before production launch."
+      title="Public beta privacy notice"
+      intro="PacePrep Team maintains this free public beta. Guest practice works without an account; cloud accounts remain disabled on the Vercel release."
     >
       <section>
         <h2>Age</h2>
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section>
-        <h2>Signed-in mode</h2>
+        <h2>Signed-in mode, when enabled</h2>
         <p>
           The authentication layer provides PacePrep with an account identifier,
           email address, and full name when available. PacePrep does not receive
@@ -89,11 +89,18 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section className="info-notice">
-        <h2>Pre-launch requirement</h2>
+        <h2>Hosting and contact</h2>
         <p>
-          The product owner must provide the legal operator name, address/state,
-          and working grievance email before this notice can be treated as final
-          or the service can be described as production-ready.
+          Vercel hosts the public website and may process technical request
+          information, such as IP addresses and logs, to deliver and protect the
+          service. See{' '}
+          <a href="https://vercel.com/legal/privacy-notice">
+            Vercel’s privacy notice
+          </a>
+          . For the available public support channel and its limits, visit{' '}
+          <a href="/contact">Contact</a>. A private privacy/grievance mailbox
+          and legal operator details remain to be established before a broader
+          account-enabled launch.
         </p>
       </section>
     </InfoShell>

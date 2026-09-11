@@ -1,5 +1,18 @@
 # PacePrep production hardening
 
+## Active checkpoint 9 — authorized online release
+
+User authorized taking the product online on 2026-09-11. Preserve both existing Vercel production aliases and keep cloud accounts disabled until live Supabase verification passes. Guest practice can ship independently, per docs/DEPLOY-NOW.md.
+
+- Completed: re-read repository/release instructions, inspected clean tracked worktree and engine commit `6ac527c`. GitHub authentication now works as `parrrm`; dry-run push succeeded. Pushed `codex/paceprep-hardening` to origin.
+- Remote CI run `34600656780` for `6ac527c` failed both browser jobs; typecheck/unit/build passed. Vercel preview `46vMQAvAcjzPzCgETV2VWQqQWyiT` is Ready in the authenticated dashboard.
+- Release fixes in progress: use `scripts/preview-vercel.mjs` to serve the actual `.vercel/output` function/static assets. Old `vite preview` expected `dist/server/index.js` on clean CI and could use stale local output; historical local Vercel browser/performance claims therefore do not establish exact-artifact verification. Sites progress now reads identity from its explicit Request instead of ambient page headers. Guest test navigation waits for DOM content before exercising consent controls. No assertion or timeout was weakened. Local final gates and fresh remote CI must pass before promotion.
+- Access: Vercel connector returns 403; authenticated browser dashboard works for `mental-math/paceprep`. Project environment settings still show no variables. No token values were printed or changed.
+- Owner authorized choosing a public-facing name. Selected “PacePrep Team”; verified `parrrm/PacePrep` is public and Issues are enabled, so its existing issue tracker is the interim public support channel. No mailbox, registered entity or private grievance channel was invented. Contact/privacy/terms/pricing now describe a free public beta with guest practice. Legal identity/private support and live Supabase checks remain prerequisites for a broader account-enabled launch.
+- Local exact-artifact Vercel browser run passed 34 tests / 2 intentional skips after the preview-server correction. Full gates rerun after the final public-beta copy edits; logs `/tmp/paceprep-release-*.log`. No production promotion yet.
+
+Exact resume: inspect the CI run and preview build, fix any failure, finish launch contact details when supplied, then release the validated source through the existing production project and verify both assigned domains. Record the actual deployed commit, URLs and any remaining boundaries. No production promotion has happened in checkpoint 9 yet.
+
 ## Completed checkpoint 8 — operations engine / resume here
 
 User authorized sequential implementation of all five engine improvements. Base: `59d22d6`. Each item must have its own completion record and tests; do not infer completion from code presence.

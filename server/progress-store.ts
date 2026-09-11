@@ -8,9 +8,9 @@ import type { ProgressStore } from './progress-types';
 import { ProgressConflict } from './progress-conflict.ts';
 
 export async function openProgressStore(
-  _request: Request,
+  request: Request,
 ): Promise<ProgressStore | null> {
-  const user = await getChatGPTUser();
+  const user = await getChatGPTUser(request);
   if (!user) return null;
   const db = await getDb();
   const store: ProgressStore = {
