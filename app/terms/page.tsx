@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { InfoShell } from '@/app/info-shell';
 
 export const metadata: Metadata = { title: 'Terms of Service' };
@@ -51,10 +52,11 @@ export default function TermsPage() {
       <section className="info-notice">
         <h2>Support and beta limits</h2>
         <p>
-          Visit <a href="/contact">Contact PacePrep Team</a> for public bug
-          reports and feature suggestions. Cloud accounts and payments are not
-          part of this Vercel beta. Legal operator details, private support and
-          final policies remain required for a broader account-enabled launch.
+          Visit <Link href="/contact">Contact PacePrep Team</Link> for public
+          bug reports and feature suggestions. Cloud accounts and payments are
+          not part of this Vercel beta. Legal operator details, private support
+          and final policies remain required for a broader account-enabled
+          launch.
         </p>
       </section>
     </InfoShell>

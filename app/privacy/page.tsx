@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { InfoShell } from '@/app/info-shell';
 import { onVercel } from '@/lib/hosting';
 
@@ -98,9 +99,9 @@ export default function PrivacyPage() {
             Vercel’s privacy notice
           </a>
           . For the available public support channel and its limits, visit{' '}
-          <a href="/contact">Contact</a>. A private privacy/grievance mailbox
-          and legal operator details remain to be established before a broader
-          account-enabled launch.
+          <Link href="/contact">Contact</Link>. A private privacy/grievance
+          mailbox and legal operator details remain to be established before a
+          broader account-enabled launch.
         </p>
       </section>
     </InfoShell>
