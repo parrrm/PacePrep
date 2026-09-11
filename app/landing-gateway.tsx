@@ -8,14 +8,7 @@ import { type BaselineAttempt } from '@/lib/baseline';
 import { InstallButton } from './pwa-provider';
 import { getProgressAccount } from '@/lib/auth-client';
 import { signInHref } from '@/lib/hosting';
-import {
-  BarChart3,
-  Check,
-  ChevronRight,
-  Clock3,
-  ShieldCheck,
-  Zap,
-} from 'lucide-react';
+import { Check, ChevronRight, Clock3, Zap } from 'lucide-react';
 
 const Trainer = dynamic(() => import('./trainer-client'), {
   ssr: false,
@@ -40,6 +33,7 @@ export default function LandingGateway() {
   const [entryIntent, setEntryIntent] = useState<'guest' | 'signin' | null>(
     null,
   );
+  const [quickStart, setQuickStart] = useState(false);
   const [baseline, setBaseline] = useState<BaselineAttempt[]>([]);
 
   useEffect(() => {
@@ -96,6 +90,7 @@ export default function LandingGateway() {
       window.location.assign(signInHref);
       return;
     }
+    if (quickStart) sessionStorage.setItem('paceprep-quick-start', '1');
     sessionStorage.setItem('paceprep-entered', '1');
     setEntryIntent(null);
     setEntered(true);
@@ -122,162 +117,55 @@ export default function LandingGateway() {
       <section className="landing-hero">
         <div className="landing-copy">
           <small>MENTAL MATH TRAINING FOR BANKING EXAMS</small>
-          <h1>Find where you lose marks. Train it until it feels automatic.</h1>
+          <h1>Have a few minutes? Turn them into exam improvement.</h1>
           <p>
-            PacePrep measures the arithmetic recall behind SBI PO and IBPS PO
-            questions, finds the facts slowing you down, and gives you the
-            shortest useful practice set to fix them.
+            Practise 10 mental-maths questions. PacePrep finds the facts costing
+            you marks or time and gives you one clear next action.
           </p>
-          <div className="hero-outcome">
-            <ShieldCheck aria-hidden="true" />
-            <span>
-              <b>Protect accuracy. Recover time. Know what to practise next.</b>
-              <small>
-                Each session turns mistakes into a focused follow-up plan.
-              </small>
-            </span>
-          </div>
-          <p className="landing-scope">
-            Use it between mock tests to strengthen foundational arithmetic
-            recall. PacePrep complements a full quantitative-aptitude syllabus.
-          </p>
-          <ol className="landing-method">
-            <li>
-              <b>01</b>
-              <span>Find the facts costing time or accuracy</span>
-            </li>
-            <li>
-              <b>02</b>
-              <span>Retry only what needs attention</span>
-            </li>
-            <li>
-              <b>03</b>
-              <span>Prove the gain in your next attempt</span>
-            </li>
-          </ol>
           <button
-            className="landing-practice-link"
-            onClick={() => setEntryIntent('guest')}
+            className="landing-primary-action"
+            onClick={() => {
+              setQuickStart(true);
+              setEntryIntent('guest');
+            }}
           >
-            Skip the baseline and start practice <ChevronRight size={16} />
+            <Clock3 size={18} aria-hidden="true" /> Start a 2-minute practice
+            <ChevronRight size={17} aria-hidden="true" />
           </button>
-          <p>
-            <Link href="/practice">Open the practice hub</Link>
-            {' · '}
-            <Link href="/ops">Mental + − × ÷ drills</Link>
-          </p>
-          <small className="landing-price">
-            Free testing preview · no card required · no paid features today
+          <small className="landing-action-note">
+            10 questions · immediate analysis · no account needed
           </small>
-          <div className="landing-trust">
+          <div className="landing-benefits" aria-label="What you gain">
             <span>
-              <Check /> Guest practice without an account
+              <Check aria-hidden="true" /> Find avoidable mark-loss patterns
             </span>
             <span>
-              <Check /> No account needed for the baseline
+              <Check aria-hidden="true" /> Build faster, more reliable recall
             </span>
             <span>
-              <Check /> Guest progress stays on this device
+              <Check aria-hidden="true" /> Know exactly what to practise next
             </span>
           </div>
+          <div className="landing-mini-loop" aria-label="Improvement loop">
+            <b>Practice</b>
+            <ChevronRight aria-hidden="true" />
+            <b>Analyse</b>
+            <ChevronRight aria-hidden="true" />
+            <b>Improve</b>
+            <ChevronRight aria-hidden="true" />
+            <b>Repeat</b>
+          </div>
+          <Link className="landing-secondary-link" href="/practice">
+            Choose a topic instead <ChevronRight size={16} />
+          </Link>
         </div>
         <BaselineDiagnostic
           onSave={(attempts) => {
             setBaseline(attempts);
+            setQuickStart(false);
             setEntryIntent('guest');
           }}
         />
-      </section>
-
-      <section className="landing-outcomes" aria-labelledby="outcomes-title">
-        <header>
-          <small>WHY REGULAR PRACTICE PAYS OFF</small>
-          <h2 id="outcomes-title">
-            Turn mental maths into dependable exam time
-          </h2>
-          <p>
-            A short session gives you evidence, a focused correction, and a
-            clear reason to return.
-          </p>
-        </header>
-        <div>
-          <article>
-            <ShieldCheck aria-hidden="true" />
-            <span>
-              <b>Lose fewer marks to avoidable errors</b>
-              <small>
-                See incorrect and skipped patterns before they repeat in a timed
-                paper.
-              </small>
-            </span>
-          </article>
-          <article>
-            <Clock3 aria-hidden="true" />
-            <span>
-              <b>Keep more time for reasoning</b>
-              <small>
-                Faster recall means less working time spent reconstructing basic
-                arithmetic.
-              </small>
-            </span>
-          </article>
-          <article>
-            <BarChart3 aria-hidden="true" />
-            <span>
-              <b>Know whether practice is working</b>
-              <small>
-                Compare matching attempts and separate real improvement from a
-                one-off fast score.
-              </small>
-            </span>
-          </article>
-        </div>
-      </section>
-
-      <section className="landing-loop" aria-labelledby="loop-title">
-        <div>
-          <small>YOUR IMPROVEMENT LOOP</small>
-          <h2 id="loop-title">Every attempt ends with a next move</h2>
-          <p>
-            You never have to decide what a score means on your own. PacePrep
-            turns each result into the next focused action.
-          </p>
-          <Link href="/practice">
-            Explore practice options <ChevronRight size={17} />
-          </Link>
-        </div>
-        <ol>
-          <li>
-            <b>1</b>
-            <span>
-              Attempt<small>Answer a short, focused set</small>
-            </span>
-          </li>
-          <li>
-            <b>2</b>
-            <span>
-              Analyse<small>See accuracy, pace, and skips</small>
-            </span>
-          </li>
-          <li>
-            <b>3</b>
-            <span>
-              Identify<small>Find the pattern costing marks</small>
-            </span>
-          </li>
-          <li>
-            <b>4</b>
-            <span>
-              Act<small>Retry the exact weak questions</small>
-            </span>
-          </li>
-          <li>
-            <b>5</b>
-            <span>
-              Improve<small>Compare, retain, and repeat</small>
-            </span>
-          </li>
-        </ol>
       </section>
 
       <footer className="landing-footer">
@@ -304,7 +192,10 @@ export default function LandingGateway() {
       {entryIntent && (
         <EntryDialog
           intent={entryIntent}
-          close={() => setEntryIntent(null)}
+          close={() => {
+            setEntryIntent(null);
+            setQuickStart(false);
+          }}
           continueEntry={continueEntry}
         />
       )}

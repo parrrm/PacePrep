@@ -42,7 +42,7 @@ test('baseline consent, scoring, import and profile survive reload', async ({
 }) => {
   await page.goto('/');
   await page
-    .getByRole('button', { name: 'Start my 60-second baseline', exact: true })
+    .getByRole('button', { name: 'Start my 1-minute check', exact: true })
     .click();
   for (const [index, fact] of BASELINE_FACTS.entries()) {
     await expect(
@@ -236,7 +236,7 @@ test('cross-tab reset stops stale recall and allows fresh saved practice', async
   const resetAt = (await progress(page, 'paceprep-grok-test')).resetAt;
   expect(resetAt).toBeGreaterThan(0);
   await page
-    .getByRole('button', { name: 'Start mixed practice', exact: true })
+    .getByRole('button', { name: 'Start 2-minute practice', exact: true })
     .click();
   await page.getByRole('button', { name: 'Type', exact: true }).click();
   await page.getByRole('textbox', { name: 'Your answer' }).fill('0');
@@ -365,7 +365,7 @@ test('Sites mocked identity preserves reset revisions and saves after deletion',
   expect(methods).toContain('DELETE');
   expect(saved.history).toEqual([]);
   await page
-    .getByRole('button', { name: 'Start mixed practice', exact: true })
+    .getByRole('button', { name: 'Start 2-minute practice', exact: true })
     .click();
   await page.getByRole('button', { name: 'Type', exact: true }).click();
   await page.getByRole('textbox', { name: 'Your answer' }).fill('0');

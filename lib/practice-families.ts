@@ -46,20 +46,19 @@ export const OPERATION_FAMILIES: Record<
 
 export const PRACTICE_HUB_COPY = {
   eyebrow: 'PRACTICE HUB',
-  title: 'Choose what to train',
-  intro:
-    'Recall facts first. Mental operations train + − × ÷ without pen or paper.',
+  title: 'Choose a quick focus',
+  intro: 'Turn a short break into recall or mental-operation practice.',
   recallEyebrow: 'RECALL FACTS',
   recallTitle: 'Automatic pairs and tables',
   recallIntro:
-    'Fractions, percentages, tables, squares, and cubes. Each direction is its own fact.',
+    'Quick recall sets for fractions, percentages, tables, squares, and cubes.',
   opsEyebrow: 'MENTAL OPERATIONS',
   opsTitle: 'Add, subtract, multiply, divide in your head',
   opsIntro:
-    'Procedure fluency, not written algorithms. Type the answer; a strategy line appears after you check.',
+    'Ten-question mental drills with one practical strategy after every answer.',
   opsReadyLabel: 'Open',
   mixedEyebrow: 'CROSS-CATEGORY TRAINING',
   mixedTitle: 'Mixed review & timed practice',
   mixedIntro:
-    'Let the recall scheduler combine due, weak, reverse, and strong-review facts.',
+    'Use a spare minute to review due facts and recent mistakes first.',
 } as const;

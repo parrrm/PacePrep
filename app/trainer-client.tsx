@@ -467,7 +467,41 @@ export default function Home({ grokTest = false }: { grokTest?: boolean }) {
       const requestedCategory = new URLSearchParams(window.location.search).get(
         'practice',
       );
-      if (
+      const shouldQuickStart =
+        sessionStorage.getItem('paceprep-quick-start') === '1';
+      sessionStorage.removeItem('paceprep-quick-start');
+      if (shouldQuickStart) {
+        const loadedStats = localSnapshot.current.stats || {};
+        const nextPool = modePool(
+          'mixed',
+          loadedStats,
+          'fractions',
+          'All groups',
+        );
+        const nextDeck = createDeck('mixed', nextPool, loadedStats);
+        const first = nextDeck.shift();
+        sessionStarted.current = performance.now();
+        sessionKey.current = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        sessionCounted.current = false;
+        sessionAttempts.current = 0;
+        sessionTargets.current = new Set();
+        activePool.current = nextPool;
+        deck.current = nextDeck;
+        setMode('mixed');
+        setLimit(sessionSize('mixed', nextPool.length));
+        setSession([]);
+        setSkippedIds([]);
+        setLeft(60);
+        setElapsedMs(0);
+        setView('practice');
+        if (first) {
+          setFact(first);
+          setOpts(choices(first));
+          setAnswer('');
+          setResult(null);
+          started.current = performance.now();
+        }
+      } else if (
         requestedCategory &&
         ['fractions', 'tables', 'powers', 'percentages', 'all'].includes(
           requestedCategory,
@@ -1592,11 +1626,8 @@ function PracticeHub({
       <div className="masteryTitle">
         <span>
           <small>PRACTICE HUB</small>
-          <h1>Train one recall domain at a time</h1>
-          <p>
-            Large categories first. Choose the direction and session format on
-            the next screen.
-          </p>
+          <h1>Choose a quick focus</h1>
+          <p>Each set is short enough for a commute, wait, or study break.</p>
         </span>
       </div>
       <section className="domain-grid" aria-label="Practice categories">
@@ -1656,10 +1687,10 @@ function PracticeHub({
           </i>
           <span>
             <small>CROSS-CATEGORY TRAINING</small>
-            <h2>Mixed review & timed practice</h2>
+            <h2>Use the next few minutes well</h2>
             <p>
-              Let the scheduler combine due, weak, reverse, and strong-review
-              facts.
+              Recent mistakes and due facts come first, then you get one next
+              action.
             </p>
           </span>
         </span>
@@ -1668,7 +1699,7 @@ function PracticeHub({
             1-minute sprint
           </Button>
           <Button onClick={() => start('mixed')}>
-            Start mixed review <ChevronRight />
+            Start 2-minute review <ChevronRight />
           </Button>
         </div>
       </section>
@@ -1941,22 +1972,19 @@ function Practice({
                 <span>
                   <b>
                     {result.ok
-                      ? `Correct in ${(result.ms / 1000).toFixed(2)} seconds.`
-                      : `Not yet — ${(result.ms / 1000).toFixed(2)} seconds.`}
+                      ? `What happened: Correct · ${(result.ms / 1000).toFixed(2)}s`
+                      : `What happened: Not yet · correct answer ${fact.a}`}
                   </b>
-                  {result.ok ? (
-                    <small>
-                      Reliable recall protects time for reasoning in the exam.
-                    </small>
-                  ) : (
-                    <small>
-                      Correct answer: <MathText value={fact.a} />
-                    </small>
-                  )}
+                  <small>
+                    Why it matters:{' '}
+                    {result.ok
+                      ? 'Reliable recall leaves more exam time for reasoning.'
+                      : 'This gap can cost a mark or slow the next calculation.'}
+                  </small>
                   <p>
                     {result.ok
-                      ? 'Next: keep the same accuracy as the questions change.'
-                      : 'Why it matters: this gap can cost accuracy and time under pressure. Next: use this method, then retry the fact: '}
+                      ? 'Next: keep this accuracy as the questions change.'
+                      : 'Next: use this method, then retry: '}
                     {!result.ok && (
                       <>
                         {decimalSlip(result.raw, fact.a)
@@ -2118,7 +2146,6 @@ function Summary({
           : item.skipped),
     ),
     scored = tries.filter((item) => !item.skipped),
-    fast = scored.length ? Math.min(...scored.map((x) => x.ms)) : 0,
     matched = scored
       .map((item) => ({
         now: item,
@@ -2138,7 +2165,8 @@ function Summary({
       .sort((a, b) => accuracy(a.x) - accuracy(b.x)),
     confusion = topConfusion([...prior, ...tries]),
     insight = performanceInsight(tries),
-    weakestTopic = topics[0];
+    weakestTopic = topics[0],
+    strongestTopic = topics.at(-1);
   async function shareReport() {
     const text = [
       'PacePrep Recall Report',
@@ -2176,25 +2204,65 @@ function Summary({
             ? `${TOPICS[weakestTopic.t].name} needs the most attention from this attempt.`
             : 'Your result now leads directly to the next useful action.'}
         </p>
-        <div className="sumstats">
-          <span>
-            <small>ANSWERED</small>
-            <b>{scored.length}</b>
-          </span>
-          <span>
-            <small>ACCURACY</small>
-            <b>{scored.length ? accuracy(tries) + '%' : '—'}</b>
-          </span>
-          <span>
-            <small>AVG. RESPONSE</small>
+        <div className="result-scan" aria-label="Session highlights">
+          <article>
+            <small>STRENGTH</small>
             <b>
-              {scored.length ? (average(tries) / 1000).toFixed(1) + 's' : '—'}
+              {strongestTopic ? TOPICS[strongestTopic.t].short : 'Not measured'}
             </b>
-          </span>
-          <span>
-            <small>FASTEST</small>
-            <b>{fast ? (fast / 1000).toFixed(2) + 's' : '—'}</b>
-          </span>
+            <span>
+              {strongestTopic
+                ? `${accuracy(strongestTopic.x)}% in this session`
+                : 'Answer a few questions first'}
+            </span>
+          </article>
+          <article>
+            <small>MARK-LOSS PATTERN</small>
+            <b>{wrong.length + skipped.length} to fix</b>
+            <span>
+              {weakestTopic && (wrong.length || skipped.length)
+                ? TOPICS[weakestTopic.t].name
+                : 'No misses in this set'}
+            </span>
+          </article>
+          <article>
+            <small>PROGRESS</small>
+            <b>
+              {previousComparable.length
+                ? `${accuracy(currentComparable) - accuracy(previousComparable) >= 0 ? '+' : ''}${accuracy(currentComparable) - accuracy(previousComparable)} pts`
+                : 'Baseline saved'}
+            </b>
+            <span>
+              {previousComparable.length
+                ? `${matched.length} matching attempts compared`
+                : 'Repeat later to measure change'}
+            </span>
+          </article>
+        </div>
+        <div className={`result-action-plan insight-${insight.status}`}>
+          <div className="insight-flow">
+            <article>
+              <small>WHAT HAPPENED</small>
+              <p>{insight.what}</p>
+            </article>
+            <article>
+              <small>WHY IT MATTERS</small>
+              <p>{insight.why}</p>
+            </article>
+            <article>
+              <small>WHAT TO DO NEXT</small>
+              <p>{insight.next}</p>
+            </article>
+          </div>
+          {!!(wrong.length || skipped.length) && (
+            <Button
+              onClick={() =>
+                retry([...wrong, ...skipped].map((item) => item.id))
+              }
+            >
+              <RotateCcw /> Fix {wrong.length + skipped.length} now
+            </Button>
+          )}
         </div>
         <div
           className="session-impact"
@@ -2233,32 +2301,6 @@ function Summary({
               </>
             )}
           </div>
-        </div>
-        <div className={`result-action-plan insight-${insight.status}`}>
-          <div className="insight-flow">
-            <article>
-              <small>WHAT HAPPENED</small>
-              <p>{insight.what}</p>
-            </article>
-            <article>
-              <small>WHY IT MATTERS</small>
-              <p>{insight.why}</p>
-            </article>
-            <article>
-              <small>WHAT TO DO NEXT</small>
-              <p>{insight.next}</p>
-            </article>
-          </div>
-          {!!(wrong.length || skipped.length) && (
-            <Button
-              onClick={() =>
-                retry([...wrong, ...skipped].map((item) => item.id))
-              }
-            >
-              <RotateCcw /> Fix {wrong.length + skipped.length} missed{' '}
-              {wrong.length + skipped.length === 1 ? 'question' : 'questions'}
-            </Button>
-          )}
         </div>
         <button
           className="analysis-toggle"

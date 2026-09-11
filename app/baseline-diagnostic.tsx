@@ -203,7 +203,7 @@ export default function BaselineDiagnostic({
           </h2>
           <p>
             {stage === 'ready'
-              ? 'Try 12 varied facts. See whether accuracy or recall speed needs attention first.'
+              ? 'Use one quick minute to see whether accuracy or recall speed needs attention first.'
               : 'Choose the answer. Accuracy matters more than speed.'}
           </p>
           <div className="baseline-question" aria-live="polite">
@@ -212,7 +212,7 @@ export default function BaselineDiagnostic({
           {stage === 'ready' ? (
             <>
               <Button onClick={begin} disabled={!hydrated}>
-                Start my 60-second baseline <ArrowRight />
+                Start my 1-minute check <ArrowRight />
               </Button>
               <small>
                 No sign-up · ends at 12 facts or 60 seconds · adults 18+
@@ -247,10 +247,10 @@ export default function BaselineDiagnostic({
                     {feedback.correct ? <Check /> : <RotateCcw />}
                     <span>
                       {feedback.skipped
-                        ? 'Skipped. This may be costing time under pressure, so it will return in your focused review.'
+                        ? 'What happened: Skipped. Why it matters: hesitation costs time. Next: review this fact.'
                         : feedback.correct
-                          ? `Correct in ${(feedback.ms / 1000).toFixed(2)} seconds. Keep this accuracy as the questions change.`
-                          : `Not yet — the correct answer is ${fact.a}. This pair will return in your focused review.`}
+                          ? `What happened: Correct · ${(feedback.ms / 1000).toFixed(2)}s. Why it matters: reliable recall protects exam time. Next: keep the accuracy.`
+                          : `What happened: Not yet · answer ${fact.a}. Why it matters: this gap can cost a mark. Next: review and retry.`}
                     </span>
                   </>
                 ) : (

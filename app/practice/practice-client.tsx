@@ -65,21 +65,23 @@ export default function PracticeHubPage() {
         <div className="masteryTitle">
           <span>
             <small>THE PRACTICE STUDIO</small>
-            <h1>What will you make easier today?</h1>
+            <h1>What can you improve in the next few minutes?</h1>
             <p>{PRACTICE_HUB_COPY.intro}</p>
           </span>
         </div>
         <section className="practice-quickstart" aria-label="Quick start">
           <div>
-            <span className="session-badge">10 questions · Your pace</span>
-            <h2>A short set, chosen for you.</h2>
+            <span className="session-badge">
+              About 2 minutes · 10 questions
+            </span>
+            <h2>Start with the shortest useful set.</h2>
             <p>
-              Mix recall topics or choose a skill below. Every untimed set gives
-              you time to understand your answer.
+              Practise, see the pattern, fix the misses, and get on with your
+              day.
             </p>
           </div>
           <Link href="/?practice=all" className="workspace-action">
-            Open mixed practice <ChevronRight size={18} />
+            Start 2-minute mixed practice <ChevronRight size={18} />
           </Link>
         </section>
 

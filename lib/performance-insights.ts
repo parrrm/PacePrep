@@ -2,6 +2,7 @@ export type PerformanceAttempt = {
   correct: boolean;
   skipped?: boolean;
   ms: number;
+  at?: number;
 };
 
 export type PerformanceInsight = {
@@ -29,12 +30,12 @@ export function performanceInsight(
   if (!answered) {
     return {
       status: 'unmeasured',
-      headline: 'Your readiness is not measured yet',
+      headline: 'Answer a short set to reveal your priority',
       what: skipped
-        ? `${skipped} ${skipped === 1 ? 'question was' : 'questions were'} skipped, so there is no accuracy result yet.`
-        : 'No answers were scored in this session.',
-      why: 'A few answered questions are needed before PacePrep can find a reliable pattern.',
-      next: 'Start an untimed set and answer at least 5 questions to create a useful starting point.',
+        ? `${skipped} ${skipped === 1 ? 'question was' : 'questions were'} skipped; no score was estimated.`
+        : 'No answers were scored.',
+      why: 'Your readiness is still unknown.',
+      next: 'Answer 5 or more untimed questions to find your first weakness.',
       accuracy: null,
       averageMs: null,
       answered,
@@ -59,10 +60,10 @@ export function performanceInsight(
   if (accuracy < 70) {
     return {
       status: 'accuracy-risk',
-      headline: 'Protect your marks with accuracy first',
-      what: `${incorrect} of ${answered} answered ${answered === 1 ? 'question was' : 'questions were'} incorrect (${accuracy}% accuracy).${skippedNote}`,
-      why: 'At this accuracy, avoidable calculation errors can cancel marks gained on questions you understand.',
-      next: 'Retry only the missed questions untimed, use the explanation, then repeat until you reach 90% accuracy.',
+      headline: 'Protect marks before chasing speed',
+      what: `${accuracy}% accuracy · ${incorrect} incorrect.${skippedNote}`,
+      why: 'Recall errors can turn solvable exam questions into lost marks.',
+      next: 'Retry the misses now. Reach 90% accuracy before adding speed.',
       accuracy,
       averageMs,
       answered,
@@ -74,10 +75,10 @@ export function performanceInsight(
   if (accuracy < 90) {
     return {
       status: 'building',
-      headline: 'Turn partial control into reliable marks',
-      what: `${answered - incorrect} of ${answered} answered questions were correct (${accuracy}% accuracy).${skippedNote}`,
-      why: 'Your method is working, but the remaining errors can still make timed performance unpredictable.',
-      next: 'Review each miss, retry the weak facts, and hold 90% accuracy before adding time pressure.',
+      headline: 'Close the remaining accuracy gaps',
+      what: `${accuracy}% accuracy · ${incorrect} incorrect.${skippedNote}`,
+      why: 'The remaining gaps can still make timed performance unpredictable.',
+      next: 'Review each miss and hold 90% accuracy before adding speed.',
       accuracy,
       averageMs,
       answered,
@@ -90,9 +91,9 @@ export function performanceInsight(
     return {
       status: 'pace-next',
       headline: 'Your accuracy is ready; recall speed is next',
-      what: `${accuracy}% accuracy at ${(averageMs / 1000).toFixed(1)} seconds per answer.${skippedNote}`,
-      why: 'Reliable answers protect marks, but slow recall can consume time needed for full exam questions.',
-      next: 'Keep the same facts accurate while reducing hesitation, then use a timed sprint to check the gain.',
+      what: `${accuracy}% accuracy · ${(averageMs / 1000).toFixed(1)}s per answer.${skippedNote}`,
+      why: 'Slow recall can consume time needed for full exam questions.',
+      next: 'Keep the accuracy and use a 60-second sprint to reduce hesitation.',
       accuracy,
       averageMs,
       answered,
@@ -104,15 +105,42 @@ export function performanceInsight(
   return {
     status: 'ready',
     headline: 'Your recall is becoming exam-ready',
-    what: `${accuracy}% accuracy at ${(averageMs / 1000).toFixed(1)} seconds per answer.${skippedNote}`,
-    why: 'Fast, reliable recall leaves more time and attention for the reasoning inside full exam questions.',
-    next: 'Review again later to prove retention, then apply this speed in a full mock test.',
+    what: `${accuracy}% accuracy · ${(averageMs / 1000).toFixed(1)}s per answer.${skippedNote}`,
+    why: 'Fast, reliable recall leaves more time for exam reasoning.',
+    next: 'Return tomorrow to prove retention, then apply it in a mock test.',
     accuracy,
     averageMs,
     answered,
     incorrect,
     skipped,
   };
+}
+
+function localDayKey(timestamp: number) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+export function practiceStreak(
+  attempts: PerformanceAttempt[],
+  now = Date.now(),
+) {
+  const activeDays = new Set(
+    attempts
+      .map((attempt) => attempt.at)
+      .filter(
+        (timestamp): timestamp is number =>
+          typeof timestamp === 'number' && Number.isFinite(timestamp),
+      )
+      .map(localDayKey),
+  );
+  const cursor = new Date(now);
+  let streak = 0;
+  while (activeDays.has(localDayKey(cursor.getTime()))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
 }
 
 export function performanceTrend(

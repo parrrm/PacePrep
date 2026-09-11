@@ -1,11 +1,4 @@
-import {
-  ArrowUpRight,
-  Check,
-  Clock3,
-  Play,
-  RotateCcw,
-  Target,
-} from 'lucide-react';
+import { ArrowUpRight, Check, Clock3, Play, Target } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FACTS } from '@/lib/recall-bank';
@@ -13,6 +6,7 @@ import { adaptiveDeck, practiceReason } from '@/lib/practice-engine';
 import {
   performanceInsight,
   performanceTrend,
+  practiceStreak,
 } from '@/lib/performance-insights';
 import type { Stat, ProgressAttempt } from '@/lib/learning-progress';
 import { SiteLink as Link } from './site-link';
@@ -88,6 +82,9 @@ export default function TrainingDashboard({
   ];
   const insight = performanceInsight(recent);
   const trend = performanceTrend(history, 10);
+  const streak = practiceStreak(history, now);
+  const todayCount = today.length;
+  const dailyTarget = 10;
   const recentForPatterns = history.slice(-40);
   const weakness = categories
     .map((category) => {
@@ -106,40 +103,41 @@ export default function TrainingDashboard({
     )[0];
   const action = next.length ? () => retry(next.map((fact) => fact.id)) : start;
   const actionLabel = next.length
-    ? `Review ${next.length} due ${next.length === 1 ? 'fact' : 'facts'}`
-    : 'Start mixed practice';
+    ? `Start ${next.length}-question review`
+    : 'Start 2-minute practice';
+  const estimatedMinutes = Math.max(1, Math.ceil((next.length || 10) / 5));
   return (
     <div className="page training-dashboard">
       <header className="workspace-title">
         <div>
-          <small>YOUR TRAINING DESK</small>
+          <small>YOUR NEXT FEW MINUTES</small>
           <h1>
             {history.length
-              ? 'Know where you stand. Improve the next thing.'
-              : 'Find your starting point in 10 questions.'}
+              ? 'One short session. One useful improvement.'
+              : 'Have 2 minutes? Find your starting point.'}
           </h1>
           <p>
             {history.length
-              ? 'Your recent answers now point to one clear next action.'
-              : 'Your answers will reveal whether accuracy or recall speed needs attention first.'}
+              ? 'Your recent answers have chosen the most useful action for you.'
+              : 'Ten questions will reveal whether accuracy or recall speed needs attention first.'}
           </p>
         </div>
         <span className="session-badge">
-          {today.filter((item) => !item.skipped).length} answers today
+          {Math.min(todayCount, dailyTarget)}/{dailyTarget} today
         </span>
       </header>
       <section className="next-session" aria-label="Your next session">
         <div className="next-session-copy">
-          <small>{next.length ? 'READY TO REVIEW' : 'RECOMMENDED NEXT'}</small>
+          <small>{next.length ? 'YOUR BEST NEXT MOVE' : 'QUICK START'}</small>
           <h2>
             {next.length
-              ? `Refresh ${next.length} due ${next.length === 1 ? 'fact' : 'facts'}`
-              : 'Your next 10 questions'}
+              ? `Fix ${next.length} ${next.length === 1 ? 'fact' : 'facts'} due for review`
+              : 'Turn 2 minutes into a useful baseline'}
           </h2>
           <p>
             {next.length
-              ? 'A focused review of facts you have already practised. No unrelated questions.'
-              : 'A mix of topics, with due facts and recent mistakes first. Work at your own pace.'}
+              ? 'Only the facts most likely to help now. No unrelated questions.'
+              : 'A short mix that finds your first mark-saving priority.'}
           </p>
           <div className="session-chips">
             <span>
@@ -148,11 +146,11 @@ export default function TrainingDashboard({
             </span>
             <span>
               <Clock3 size={16} />
-              Untimed
+              About {estimatedMinutes} min
             </span>
             <span>
               <Check size={16} />
-              Explanations included
+              Instant next step
             </span>
           </div>
           <Button onClick={action}>
@@ -165,16 +163,19 @@ export default function TrainingDashboard({
               time.
             </small>
           )}
+          <div className="daily-milestone">
+            <span>
+              {todayCount >= dailyTarget
+                ? 'Daily milestone complete'
+                : `${dailyTarget - todayCount} questions to today’s milestone`}
+            </span>
+            <progress
+              value={Math.min(todayCount, dailyTarget)}
+              max={dailyTarget}
+              aria-label="Daily practice milestone"
+            />
+          </div>
         </div>
-        <aside className="session-note">
-          <RotateCcw size={25} />
-          <h3>Understand it. Recall it.</h3>
-          <p>
-            Check your answer, read the explanation, then continue when you’re
-            ready.
-          </p>
-          <span>Accuracy comes before speed.</span>
-        </aside>
       </section>
       <section
         className="dashboard-scoreboard training-metrics"
@@ -190,40 +191,46 @@ export default function TrainingDashboard({
           </span>
         </article>
         <article>
-          <small>Correct-answer pace</small>
-          <strong>{pace ? `${pace}s` : '—'}</strong>
-          <span>
-            {correct.length
-              ? `${correct.length} correct ${correct.length === 1 ? 'answer' : 'answers'} sampled`
-              : 'Build accuracy first'}
-          </span>
-        </article>
-        <article>
-          <small>Readiness signal</small>
+          <small>Readiness</small>
           <strong className="metric-label">
             {insight.status === 'unmeasured'
               ? 'Not measured'
               : insight.status === 'accuracy-risk'
-                ? 'Accuracy risk'
+                ? 'Accuracy first'
                 : insight.status === 'building'
                   ? 'Building'
                   : insight.status === 'pace-next'
-                    ? 'Pace next'
+                    ? 'Speed next'
                     : 'On track'}
           </strong>
-          <span>Based on your last {recent.length || 20} answers</span>
+          <span>
+            {pace ? `${pace}s correct-answer pace` : 'Answer 5 to unlock'}
+          </span>
         </article>
         <article>
-          <small>Recent trend</small>
+          <small>Progress trend</small>
           <strong className="metric-label">
             {trend
               ? `${trend.accuracyDelta >= 0 ? '+' : ''}${trend.accuracyDelta} pts`
-              : `${completedSessions} ${completedSessions === 1 ? 'session' : 'sessions'}`}
+              : 'Building'}
           </strong>
           <span>
             {trend
               ? `Latest ${trend.sampleSize} vs previous ${trend.sampleSize}`
-              : 'Complete 20 answers to unlock a trend'}
+              : '20 answers unlock comparison'}
+          </span>
+        </article>
+        <article>
+          <small>Current streak</small>
+          <strong className="metric-label">
+            {streak
+              ? `${streak} ${streak === 1 ? 'day' : 'days'}`
+              : 'Start today'}
+          </strong>
+          <span>
+            {streak
+              ? `${completedSessions} ${completedSessions === 1 ? 'session' : 'sessions'} completed`
+              : 'One short session begins it'}
           </span>
         </article>
       </section>
@@ -233,7 +240,7 @@ export default function TrainingDashboard({
       >
         <header>
           <div>
-            <small>YOUR READINESS SIGNAL</small>
+            <small>YOUR ONE PRIORITY</small>
             <h2 id="readiness-title">{insight.headline}</h2>
           </div>
           {weakness?.lost ? (
@@ -264,11 +271,11 @@ export default function TrainingDashboard({
         </div>
         <footer>
           <span>
-            <Check size={17} aria-hidden="true" /> Attempt recorded
-            <ArrowUpRight size={16} aria-hidden="true" /> Pattern identified
-            <ArrowUpRight size={16} aria-hidden="true" /> Action ready
+            <Check size={17} aria-hidden="true" /> Practice
+            <ArrowUpRight size={16} aria-hidden="true" /> Analyse
+            <ArrowUpRight size={16} aria-hidden="true" /> Improve
+            <ArrowUpRight size={16} aria-hidden="true" /> Repeat
           </span>
-          <Button onClick={action}>Do This Next: {actionLabel}</Button>
         </footer>
       </section>
       <section className="training-categories" aria-labelledby="your-topics">
@@ -313,17 +320,17 @@ export default function TrainingDashboard({
         <div>
           <h2>
             {accuracy === null
-              ? 'Your improvement loop starts with one attempt.'
+              ? 'Build your first small win today.'
               : accuracy >= 85
-                ? 'Your accuracy is on track.'
-                : 'Give the difficult facts another look.'}
+                ? 'Your accuracy is on track—prove it tomorrow.'
+                : 'One more short set can close today’s gaps.'}
           </h2>
           <p>
             {accuracy === null
-              ? 'Attempt, analyse, fix the misses, and compare the next session. Every result should lead to an action.'
+              ? 'A two-minute attempt is enough to reveal the first useful action.'
               : accuracy >= 85
-                ? 'Review on another day to test retention, then try a sprint when you feel ready.'
-                : 'Use the explanation after each answer. Recent mistakes get priority in your next mixed set.'}
+                ? 'A return visit tests retention; consistent recall matters more than one good score.'
+                : 'Retry recent misses while the explanation is fresh.'}
           </p>
         </div>
         <Link href="/ops">

@@ -4,24 +4,26 @@ import AxeBuilder from '@axe-core/playwright';
 const saved = (page: Page, key = 'paceprep-grok-test') =>
   page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), key);
 
-test('landing explains the exam outcome and the complete improvement loop', async ({
+test('landing makes a two-minute exam-improvement loop immediately clear', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(
-    page.getByRole('heading', { name: /Find where you lose marks/ }),
+    page.getByRole('heading', { name: /Have a few minutes/ }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      'Protect accuracy. Recover time. Know what to practise next.',
-    ),
+    page.getByRole('button', { name: /Start a 2-minute practice/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Every attempt ends with a next move' }),
-  ).toBeVisible();
-  await expect(page.locator('.landing-loop li')).toHaveCount(5);
-  await expect(page.locator('.landing-loop')).toContainText('Attempt');
-  await expect(page.locator('.landing-loop')).toContainText('Improve');
+  await expect(page.locator('.landing-benefits')).toContainText(
+    'Find avoidable mark-loss patterns',
+  );
+  await expect(page.locator('.landing-mini-loop b')).toHaveCount(4);
+  await expect(page.locator('.landing-mini-loop')).toContainText('Practice');
+  await expect(page.locator('.landing-mini-loop')).toContainText('Repeat');
+  await page.getByRole('button', { name: /Start a 2-minute practice/ }).click();
+  await page.getByRole('checkbox', { name: /I am 18/ }).check();
+  await page.getByRole('button', { name: 'Continue as guest' }).click();
+  await expect(page.locator('.practiceHead')).toContainText('Question 1 of 10');
 });
 
 test('untimed feedback stays until Continue and a one-fact retry stays focused', async ({
@@ -41,6 +43,9 @@ test('untimed feedback stays until Continue and a one-fact retry stays focused',
   await expect(page.locator('.feedback.no')).toBeVisible();
   await expect(page.locator('.qcard h1')).toHaveText(question);
   await page.getByRole('button', { name: 'End session', exact: true }).click();
+  await expect(page.locator('.result-scan')).toContainText('STRENGTH');
+  await expect(page.locator('.result-scan')).toContainText('MARK-LOSS PATTERN');
+  await expect(page.locator('.result-scan')).toContainText('PROGRESS');
   await expect(page.locator('.result-action-plan')).toContainText(
     'WHAT HAPPENED',
   );
@@ -103,6 +108,9 @@ test('operation retries contain only misses and complete after the target count'
   await page.getByRole('textbox', { name: 'Your answer' }).fill('0');
   await page.getByRole('button', { name: 'Check answer', exact: true }).click();
   await page.getByRole('button', { name: 'End session', exact: true }).click();
+  await expect(page.locator('.operation-result-scan')).toContainText(
+    'MARK-LOSS PATTERN',
+  );
   await page.getByRole('button', { name: 'Retry missed questions' }).click();
   await expect(page.locator('.practiceHead')).toContainText('Question 1 of 1');
   await expect(page.locator('.qcard h1')).toHaveText(question);
@@ -121,7 +129,7 @@ test('dashboard has a clear starting point with accessible light and dark themes
 }) => {
   await page.goto('/?grok-test=1');
   await expect(
-    page.getByRole('button', { name: 'Start mixed practice', exact: true }),
+    page.getByRole('button', { name: 'Start 2-minute practice', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Recent learning progress' }),
@@ -139,7 +147,7 @@ test('dashboard has a clear starting point with accessible light and dark themes
     expect(audit.violations).toEqual([]);
   }
   await page
-    .getByRole('button', { name: 'Start mixed practice', exact: true })
+    .getByRole('button', { name: 'Start 2-minute practice', exact: true })
     .click();
   await expect(page.locator('.practiceHead')).toContainText('Question 1 of 10');
   await expect(

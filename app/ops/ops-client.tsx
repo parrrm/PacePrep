@@ -275,6 +275,7 @@ export default function OpsPage() {
         .slice(0, 3),
     [log],
   );
+  const missedCount = log.filter((item) => !item.correct).length;
   const insight = performanceInsight(log);
 
   if (stage === 'done') {
@@ -296,6 +297,23 @@ export default function OpsPage() {
           </div>
           {status}
           <section className="panel operation-empty">
+            <div
+              className="operation-result-scan"
+              aria-label="Session highlights"
+            >
+              <span>
+                <small>ACCURACY</small>
+                <b>{scored.length ? `${accuracy}%` : '—'}</b>
+              </span>
+              <span>
+                <small>MARK-LOSS PATTERN</small>
+                <b>{missedCount ? `${missedCount} to fix` : 'No misses'}</b>
+              </span>
+              <span>
+                <small>PACE</small>
+                <b>{scored.length ? `${average.toFixed(1)}s` : '—'}</b>
+              </span>
+            </div>
             <div className={`result-action-plan insight-${insight.status}`}>
               <h2>{insight.headline}</h2>
               <div className="insight-flow">
@@ -315,7 +333,10 @@ export default function OpsPage() {
             </div>
             {weak.length ? (
               <div className="operation-misses">
-                <h2>Questions costing you marks or time</h2>
+                <h2>
+                  {missedCount > weak.length ? 'Top questions' : 'Questions'}
+                  {' costing you marks or time'}
+                </h2>
                 <ul>
                   {weak.map((item) => (
                     <li key={item.id}>
@@ -335,14 +356,15 @@ export default function OpsPage() {
               </p>
             )}
             <div>
-              {!!weak.length && (
+              {weak.length ? (
                 <Button onClick={() => family && begin(family, 'retry')}>
                   Retry missed questions
                 </Button>
+              ) : (
+                <Button onClick={() => family && begin(family, 'ten')}>
+                  Practise another 10
+                </Button>
               )}
-              <Button onClick={() => family && begin(family, 'ten')}>
-                Drill again
-              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -352,7 +374,6 @@ export default function OpsPage() {
               >
                 Back to operations
               </Button>
-              <Link href="/">Home</Link>
             </div>
           </section>
         </main>
@@ -577,18 +598,19 @@ export default function OpsPage() {
                 <span>
                   <b>
                     {result.correct
-                      ? `Correct in ${(result.ms / 1000).toFixed(2)} seconds.`
-                      : `Not yet — ${(result.ms / 1000).toFixed(2)} seconds.`}
+                      ? `What happened: Correct · ${(result.ms / 1000).toFixed(2)}s`
+                      : `What happened: Not yet · correct answer ${result.a}`}
                   </b>
                   <small>
+                    Why it matters:{' '}
                     {result.correct
-                      ? 'Reliable mental calculation protects time for harder exam steps.'
-                      : `Correct answer: ${result.a}`}
+                      ? 'Reliable calculation leaves more time for harder exam steps.'
+                      : 'This hesitation can cost a mark or slow the next step.'}
                   </small>
                   <p>
                     {result.correct
                       ? 'Next: keep this accuracy as the numbers change.'
-                      : `Why it matters: hesitation here can cost time and a mark. Next: ${result.strategy}`}
+                      : `Next: ${result.strategy}`}
                   </p>
                 </span>
                 <button type="button" onClick={goNext}>
@@ -598,11 +620,13 @@ export default function OpsPage() {
             )}
           </output>
         </div>
-        <div className="quiz-actions">
-          <button type="button" onClick={skip} disabled={!!result}>
-            Skip
-          </button>
-        </div>
+        {!result && (
+          <div className="quiz-actions">
+            <button type="button" onClick={skip}>
+              Skip
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );
