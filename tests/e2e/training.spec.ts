@@ -32,7 +32,7 @@ test('unseen operations check defers coaching and preserves an exact retry', asy
   expect((await saved(page, 'paceprep-progress')).history).toHaveLength(2);
 });
 
-test('landing makes a two-minute exam-improvement loop immediately clear', async ({
+test('landing makes the diagnostic-led improvement loop immediately clear', async ({
   page,
 }) => {
   await page.goto('/');
@@ -40,18 +40,23 @@ test('landing makes a two-minute exam-improvement loop immediately clear', async
     page.getByRole('heading', { name: /Have a few minutes/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Start a 2-minute practice/ }),
+    page.getByRole('button', { name: /Start my 60-second diagnostic/ }),
   ).toBeVisible();
+  await expect(page.locator('.landing-copy')).toContainText(
+    '12 exam-relevant mental-maths questions in 60 seconds',
+  );
   await expect(page.locator('.landing-benefits')).toContainText(
     'Find avoidable mark-loss patterns',
   );
   await expect(page.locator('.landing-mini-loop b')).toHaveCount(4);
   await expect(page.locator('.landing-mini-loop')).toContainText('Practice');
   await expect(page.locator('.landing-mini-loop')).toContainText('Repeat');
-  await page.getByRole('button', { name: /Start a 2-minute practice/ }).click();
-  await page.getByRole('checkbox', { name: /I am 18/ }).check();
-  await page.getByRole('button', { name: 'Continue as guest' }).click();
-  await expect(page.locator('.practiceHead')).toContainText('Question 1 of 10');
+  await page
+    .getByRole('button', { name: /Start my 60-second diagnostic/ })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Question 1 of 12' }),
+  ).toBeVisible();
 });
 
 test('untimed feedback stays until Continue and a one-fact retry stays focused', async ({

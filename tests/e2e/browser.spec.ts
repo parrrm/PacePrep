@@ -42,12 +42,15 @@ test('baseline consent, scoring, import and profile survive reload', async ({
 }) => {
   await page.goto('/');
   await page
-    .getByRole('button', { name: 'Start my 1-minute check', exact: true })
+    .getByRole('button', {
+      name: 'Start my 60-second diagnostic',
+      exact: true,
+    })
     .click();
   for (const [index, fact] of BASELINE_FACTS.entries()) {
     await expect(
       page.getByRole('heading', {
-        name: `Fact ${index + 1} of 12`,
+        name: `Question ${index + 1} of 12`,
         exact: true,
       }),
     ).toBeVisible();

@@ -199,7 +199,7 @@ export default function BaselineDiagnostic({
           <h2 id="baseline-title">
             {stage === 'ready'
               ? 'Find your first mark-saving priority'
-              : `Fact ${index + 1} of ${BASELINE_FACTS.length}`}
+              : `Question ${index + 1} of ${BASELINE_FACTS.length}`}
           </h2>
           <p>
             {stage === 'ready'
@@ -212,10 +212,10 @@ export default function BaselineDiagnostic({
           {stage === 'ready' ? (
             <>
               <Button onClick={begin} disabled={!hydrated}>
-                Start my 1-minute check <ArrowRight />
+                Start my 60-second diagnostic <ArrowRight />
               </Button>
               <small>
-                No sign-up · ends at 12 facts or 60 seconds · adults 18+
+                No sign-up · 12 questions · immediate analysis
               </small>
               <p className="baseline-privacy">
                 Answers stay in this page until you choose to save them.

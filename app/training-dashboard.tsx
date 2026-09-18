@@ -132,7 +132,7 @@ export default function TrainingDashboard({
           <h2>
             {next.length
               ? `Fix ${next.length} ${next.length === 1 ? 'fact' : 'facts'} due for review`
-              : 'Turn 2 minutes into a useful baseline'}
+              : 'Turn 60 seconds into a useful baseline'}
           </h2>
           <p>
             {next.length

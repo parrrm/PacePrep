@@ -1,5 +1,13 @@
 # PacePrep production hardening
 
+## Active checkpoint 10 — diagnostic-led landing redesign and release
+
+The landing implementation and complete local cross-platform validation are complete; production release is next. The former two-minute quick-start CTA and its adjacent stats were removed; the existing 12-question, 60-second baseline is now the only hero action. Copy, browser expectations and the dashboard baseline prompt now use the same duration and question count. The hero is one compact vertical unit on desktop and mobile, with the diagnostic card followed by the three benefits, Practice → Analyse → Improve → Repeat strip and topic link. The card has tighter spacing, a persistent high-contrast CTA with hover/focus states, and a reduced-motion-safe shadow entrance. The math pattern fades after the hero. Footer links are grouped and become two columns on phones; the account copy now explains that sign-in can save progress across devices, while the 18+ notice remains footer fine print.
+
+Verified on a colon-free temporary mirror (pnpm cannot expose local binaries from this workspace path): TypeScript and full lint pass, all 81 unit/integration tests pass, and the Vercel build succeeds. Vercel E2E passes 34 tests on desktop and phone with 2 intentional Sites-only skips. The sequential Sites build and E2E pass all 39 tests, including the three D1 scenarios. Desktop 1440×1000 and phone 390×844 artifact screenshots show no horizontal overflow and keep the diagnostic card as the dominant first-viewport element. The WCAG A/AA suite passes on both viewports after replacing opacity/transform animation with a shadow-only entrance; the initial animation temporarily reduced effective CTA contrast and was not retained. `git diff --check` passes.
+
+Exact next step: deploy the verified source through the existing production project and confirm the production aliases.
+
 ## Active checkpoint 9 — authorized online release
 
 User authorized taking the product online on 2026-09-11. Preserve both existing Vercel production aliases and keep cloud accounts disabled until live Supabase verification passes. Guest practice can ship independently, per docs/DEPLOY-NOW.md.

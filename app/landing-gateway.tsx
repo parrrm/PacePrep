@@ -8,7 +8,7 @@ import { type BaselineAttempt } from '@/lib/baseline';
 import { InstallButton } from './pwa-provider';
 import { getProgressAccount } from '@/lib/auth-client';
 import { signInHref } from '@/lib/hosting';
-import { Check, ChevronRight, Clock3, Zap } from 'lucide-react';
+import { Check, ChevronRight, Zap } from 'lucide-react';
 
 const Trainer = dynamic(() => import('./trainer-client'), {
   ssr: false,
@@ -33,7 +33,6 @@ export default function LandingGateway() {
   const [entryIntent, setEntryIntent] = useState<'guest' | 'signin' | null>(
     null,
   );
-  const [quickStart, setQuickStart] = useState(false);
   const [baseline, setBaseline] = useState<BaselineAttempt[]>([]);
 
   useEffect(() => {
@@ -90,7 +89,6 @@ export default function LandingGateway() {
       window.location.assign(signInHref);
       return;
     }
-    if (quickStart) sessionStorage.setItem('paceprep-quick-start', '1');
     sessionStorage.setItem('paceprep-entered', '1');
     setEntryIntent(null);
     setEntered(true);
@@ -119,22 +117,18 @@ export default function LandingGateway() {
           <small>MENTAL MATH TRAINING FOR BANKING EXAMS</small>
           <h1>Have a few minutes? Turn them into exam improvement.</h1>
           <p>
-            Practise 10 mental-maths questions. PacePrep finds the facts costing
-            you marks or time and gives you one clear next action.
+            Try 12 exam-relevant mental-maths questions in 60 seconds. PacePrep
+            finds what is costing you marks or time and gives you one clear next
+            action.
           </p>
-          <button
-            className="landing-primary-action"
-            onClick={() => {
-              setQuickStart(true);
-              setEntryIntent('guest');
-            }}
-          >
-            <Clock3 size={18} aria-hidden="true" /> Start a 2-minute practice
-            <ChevronRight size={17} aria-hidden="true" />
-          </button>
-          <small className="landing-action-note">
-            10 questions · immediate analysis · no account needed
-          </small>
+        </div>
+        <BaselineDiagnostic
+          onSave={(attempts) => {
+            setBaseline(attempts);
+            setEntryIntent('guest');
+          }}
+        />
+        <div className="landing-support">
           <div className="landing-benefits" aria-label="What you gain">
             <span>
               <Check aria-hidden="true" /> Find avoidable mark-loss patterns
@@ -159,30 +153,28 @@ export default function LandingGateway() {
             Choose a topic instead <ChevronRight size={16} />
           </Link>
         </div>
-        <BaselineDiagnostic
-          onSave={(attempts) => {
-            setBaseline(attempts);
-            setQuickStart(false);
-            setEntryIntent('guest');
-          }}
-        />
       </section>
 
       <footer className="landing-footer">
         <nav aria-label="Footer navigation">
-          <Link href="/about">About</Link>
-          <Link href="/practice">Practice</Link>
-          <Link href="/ops">Operations</Link>
-          <Link href="/pricing">Pricing</Link>
-          <Link href="/faq">FAQ</Link>
-          <Link href="/install">Install app</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/contact">Contact</Link>
+          <div>
+            <strong>Learn</strong>
+            <Link href="/practice">Practice</Link>
+            <Link href="/ops">Operations</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/install">Install app</Link>
+          </div>
+          <div>
+            <strong>About</strong>
+            <Link href="/about">About PacePrep</Link>
+            <Link href="/faq">FAQ</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/terms">Terms</Link>
+            <Link href="/contact">Contact</Link>
+          </div>
         </nav>
         <span>
-          Guest mode is device-local · cloud sync depends on account
-          availability
+          No account needed — sign in later to save progress across devices.
         </span>
         <small>
           For adults aged 18+. By continuing, you agree to the Terms and Privacy
@@ -194,7 +186,6 @@ export default function LandingGateway() {
           intent={entryIntent}
           close={() => {
             setEntryIntent(null);
-            setQuickStart(false);
           }}
           continueEntry={continueEntry}
         />

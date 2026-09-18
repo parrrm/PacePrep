@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 const checks = [
   'Open the public home page. Confirm the page loads without login, CAPTCHA, or a permission prompt.',
-  'Run the 12-question baseline. Check correct and incorrect feedback, the 60-second limit, results, the 18+ agreement, and guest continuation.',
+  'Run the 12-question, 60-second baseline. Check correct and incorrect feedback, results, the 18+ agreement, and guest continuation.',
   'Open the isolated trainer below. Test Home, Practice, Progress, learner settings, dark mode, and mobile navigation.',
   'In Practice, open Fractions, Tables, Squares & cubes, and Percentages. Test direct recall, reverse recall, timed sprint, focused drill, mixed review, and the 10-question benchmark.',
   'Expand More session formats. Test Learn, Weak areas, Random practice, and the 10-, 25-, and 50-question tests. For longer formats, a short representative run plus End session is enough.',
